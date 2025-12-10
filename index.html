@@ -5,6 +5,7 @@
   <title>Sistema de Bombeamento Solar</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="styles.css">
+
   <link rel="icon" href="icon.ico" type="image/x-icon">
 
   <!-- Leaflet (mapa) -->
@@ -15,7 +16,6 @@
     crossorigin=""
   />
 </head>
-
 <body>
 <header>
   <h1>Sistema de Bombeamento com Energia Solar</h1>
@@ -228,6 +228,11 @@
     <div class="resumo-actions">
       <button id="btnSalvarProjeto">Salvar projeto</button>
       <button id="btnCarregarProjeto">Carregar projeto</button>
+
+      <!-- ✅ NOVO: Importar projeto por arquivo -->
+      <input type="file" id="fileProjeto" accept="application/json">
+      <button id="btnImportProjeto">Importar Projeto</button>
+
       <button id="btnGerarPdf">Gerar Relatório (PDF)</button>
       <button id="btnCopiarResumo">Copiar resumo</button>
     </div>
@@ -240,17 +245,20 @@
   <small>Projeto acadêmico - Bombeamento com energia solar.</small>
 </footer>
 
-<!-- Leaflet -->
+<!-- Scripts -->
 <script
   src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
   integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
   crossorigin=""
 ></script>
 
-<!-- jsPDF (USAR jsDelivr - sem integrity pra não bloquear) -->
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<!-- jsPDF para gerar PDF (✅ sem integrity pra não bloquear) -->
+<script
+  src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
+  crossorigin="anonymous"
+  referrerpolicy="no-referrer"
+></script>
 
-<!-- Seu JS (cache-bust pra GitHub Pages atualizar) -->
-<script src="app.js?v=12"></script>
+<script src="app.js"></script>
 </body>
 </html>
