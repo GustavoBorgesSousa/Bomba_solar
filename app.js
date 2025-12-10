@@ -1,653 +1,670 @@
-(() => {
-  // ================== DADOS DEMANDA ==================
-  const demandItems = [
-    { id: "people",  label: "Pessoas",   unit: "pessoa(s)", lpd: 84 },
-    { id: "cattle",  label: "Bovino",    unit: "cabeça(s)", lpd: 45 },
-    { id: "pigs",    label: "Suínos",    unit: "cabeça(s)", lpd: 12.5 },
-    { id: "garden",  label: "Hortas",    unit: "horta(s)",  lpd: 7 },
-    { id: "pasture", label: "Pastagem",  unit: "área(s)",   lpd: 50000 }
-  ];
+// ====================== CONSTANTES BÁSICAS ======================
+const consumoPorUnidade = {
+  pessoas: 84,
+  bovinos: 45,
+  suinos: 12.5,
+  hortas: 7,
+  pastagem: 50000
+};
 
-  // ================== CATÁLOGO (EXEMPLO) ==================
-  const SAMPLE_CATALOG = [
-    {
-      name: "Solar DC 24V - Modelo A (superficial)",
-      type: "solar_dc",
-      voltage: 24,
-      powerW: 180,
-      price: 690,
-      maxFlowLh: 1200,
-      maxHeadM: 18
-    },
-    {
-      name: "Solar DC 24V - Modelo B (submersa)",
-      type: "submersa",
-      voltage: 24,
-      powerW: 350,
-      price: 1200,
-      maxFlowLh: 1800,
-      maxHeadM: 35
-    },
-    {
-      name: "Solar DC 48V - Modelo C (submersa)",
-      type: "solar_dc",
-      voltage: 48,
-      powerW: 600,
-      price: 2100,
-      maxFlowLh: 2600,
-      maxHeadM: 55
-    },
-    {
-      name: "AC 220V + Inversor - Bomba D (superficial)",
-      type: "ac_inversor",
-      voltage: 220,
-      powerW: 750,
-      price: 1600,
-      maxFlowLh: 3200,
-      maxHeadM: 40
-    },
-    {
-      name: "Solar DC 12V - Modelo E (pequena)",
-      type: "solar_dc",
-      voltage: 12,
-      powerW: 90,
-      price: 390,
-      maxFlowLh: 700,
-      maxHeadM: 10
-    },
-    {
-      name: "Solar DC 48V - Modelo F (curva por pontos)",
-      type: "solar_dc",
-      voltage: 48,
-      powerW: 800,
-      price: 2600,
-      curvePoints: [
-        { flowLh: 0,    headM: 70 },
-        { flowLh: 800,  headM: 62 },
-        { flowLh: 1400, headM: 50 },
-        { flowLh: 2000, headM: 38 },
-        { flowLh: 2600, headM: 24 },
-        { flowLh: 3200, headM: 10 }
-      ]
+const LOCAL_STORAGE_KEY = 'bombaSolarProjeto';
+
+// Catálogo exemplo
+let catalogoBombas = [
+  {
+    nome: "Solar DC 200W",
+    tipo: "Solar DC",
+    tensao: "24V",
+    potencia: 200,
+    maxFlow: 1000,
+    maxHead: 30
+  },
+  {
+    nome: "Solar DC 300W",
+    tipo: "Solar DC",
+    tensao: "24V",
+    potencia: 300,
+    maxFlow: 1500,
+    maxHead: 35
+  },
+  {
+    nome: "Solar DC 500W",
+    tipo: "Solar DC",
+    tensao: "48V",
+    potencia: 500,
+    maxFlow: 2500,
+    maxHead: 45
+  },
+  {
+    nome: "AC 1/2CV",
+    tipo: "AC",
+    tensao: "220V",
+    potencia: 370,
+    maxFlow: 3000,
+    maxHead: 28
+  },
+  {
+    nome: "AC 1CV",
+    tipo: "AC",
+    tensao: "220V",
+    potencia: 750,
+    maxFlow: 4500,
+    maxHead: 40
+  }
+];
+
+// Guarda últimos resultados para PDF / resumo
+let lastResults = null;
+
+// ====================== HELPERS ======================
+function parseNumber(input, fallback = 0) {
+  const n = Number(input);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function arred(n, casas = 2) {
+  return Number.isFinite(n) ? n.toFixed(casas) : '0';
+}
+
+// ====================== DOM READY ======================
+document.addEventListener('DOMContentLoaded', () => {
+  // Inputs de demanda
+  const pessoasQtd = document.getElementById('pessoasQtd');
+  const bovinosQtd = document.getElementById('bovinosQtd');
+  const suinosQtd = document.getElementById('suinosQtd');
+  const hortasQtd = document.getElementById('hortasQtd');
+  const pastagemQtd = document.getElementById('pastagemQtd');
+
+  // Saídas demanda
+  const totalLitrosDiaEl = document.getElementById('totalLitrosDia');
+  const totalM3DiaEl = document.getElementById('totalM3Dia');
+
+  // Inputs hidráulica
+  const pocoProf = document.getElementById('pocoProfundidade');
+  const reservAlt = document.getElementById('reservatorioAltura');
+  const distTubo = document.getElementById('distanciaTubulacao');
+
+  // Saídas hidráulica
+  const distKmEl = document.getElementById('distanciaKm');
+  const perdasEl = document.getElementById('perdasCarga');
+  const amtEl = document.getElementById('amtResultado');
+  const avisosEl = document.getElementById('avisos');
+
+  // Vazão / potência
+  const horasBomb = document.getElementById('horasBombeamento');
+  const eficienciaEl = document.getElementById('eficienciaBomba');
+  const habilitarPotenciaEl = document.getElementById('habilitarPotencia');
+
+  const vazaoLhEl = document.getElementById('vazaoLh');
+  const vazaoLminEl = document.getElementById('vazaoLmin');
+  const vazaoM3hEl = document.getElementById('vazaoM3h');
+  const vazaoM3diaEl = document.getElementById('vazaoM3dia');
+  const potHidEl = document.getElementById('potenciaHidraulica');
+  const potElecEl = document.getElementById('potenciaEletrica');
+
+  // Catálogo / filtros
+  const margemVazaoEl = document.getElementById('margemVazao');
+  const margemAmtEl = document.getElementById('margemAMT');
+  const filtroTipoEl = document.getElementById('filtroTipo');
+  const filtroTensaoEl = document.getElementById('filtroTensao');
+  const catalogoJsonEl = document.getElementById('catalogoJson');
+  const tabelaBombasEl = document.getElementById('tabelaBombas');
+  const bombaRecomendadaEl = document.getElementById('bombaRecomendada');
+
+  // Botões catálogo
+  const fileCatalogoEl = document.getElementById('fileCatalogo');
+  const btnImportCatalogo = document.getElementById('btnImportCatalogo');
+  const btnExportCatalogo = document.getElementById('btnExportCatalogo');
+  const btnAplicarCatalogo = document.getElementById('btnAplicarCatalogo');
+
+  // Resumo / projeto / PDF
+  const resumoTextoEl = document.getElementById('resumoTexto');
+  const btnSalvarProjeto = document.getElementById('btnSalvarProjeto');
+  const btnCarregarProjeto = document.getElementById('btnCarregarProjeto');
+  const btnGerarPdf = document.getElementById('btnGerarPdf');
+  const btnCopiarResumo = document.getElementById('btnCopiarResumo');
+
+  // Mapa
+  const distanciaMapaInfoEl = document.getElementById('distanciaMapaInfo');
+  const btnResetMapa = document.getElementById('btnResetMapa');
+
+  // Preenche textarea com catálogo padrão
+  catalogoJsonEl.value = JSON.stringify(catalogoBombas, null, 2);
+
+  // ---------- MAPA ----------
+  let map, markers = [];
+
+  function initMap() {
+    map = L.map('map').setView([-15.94, -48.26], 5); // centro aproximado Brasil
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
+
+    map.on('click', onMapClick);
+  }
+
+  function onMapClick(e) {
+    if (markers.length >= 2) return;
+
+    const marker = L.marker(e.latlng).addTo(map);
+    markers.push(marker);
+
+    if (markers.length === 2) {
+      const d = markers[0].getLatLng().distanceTo(markers[1].getLatLng()); // em metros
+      distanciaMapaInfoEl.textContent = arred(d, 1);
+      distTubo.value = Math.round(d);
+      recalcAll();
     }
-  ];
-
-  // Deep clone compatível
-  const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
-  let pumpCatalog = deepClone(SAMPLE_CATALOG);
-
-  const state = {
-    quantities: Object.fromEntries(demandItems.map(i => [i.id, 0])),
-    totalLitersPerDay: 0,
-    wellDepth: 0,
-    tankHeight: 0,
-    pipeDistance: 0,
-    headLoss: 0,
-    amt: 0,
-    pumpHours: 5.5,
-    flowLh: 0,
-    flowLm: 0,
-    powerEnabled: true,
-    efficiency: 0.35,
-    powerW: 0,
-    flowMargin: 1.20,
-    headMargin: 1.10
-  };
-
-  // ================== HELPERS ==================
-  function $(id) { return document.getElementById(id); }
-
-  function clampNumber(v, min = 0, max = Number.POSITIVE_INFINITY) {
-    const n = Number(v);
-    if (!Number.isFinite(n)) return min;
-    return Math.min(Math.max(n, min), max);
   }
 
-  function format(n) {
-    const x = Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-    return x.toLocaleString("pt-BR");
+  function resetMapa() {
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
+    distanciaMapaInfoEl.textContent = '0';
   }
 
-  // ================== DEMANDA UI ==================
-  function renderDemandTable() {
-    const container = $("demandTable");
-    container.innerHTML = `
-      <table>
-        <thead>
-          <tr>
-            <th>Categoria</th>
-            <th class="right">L/dia por unidade</th>
-            <th class="right">Quantidade</th>
-            <th class="right">Subtotal (L/dia)</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${demandItems.map(item => `
-            <tr>
-              <td>${item.label} <span class="small">(${item.unit})</span></td>
-              <td class="right">${format(item.lpd)}</td>
-              <td class="right" style="width:140px">
-                <input type="number" min="0" step="1" value="${state.quantities[item.id]}" data-demand="${item.id}" style="text-align:right" />
-              </td>
-              <td class="right"><span id="sub_${item.id}">0</span></td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    `;
+  // ---------- CÁLCULOS PRINCIPAIS ----------
+  function calcularDemandaTotal() {
+    const qtdPessoas = parseNumber(pessoasQtd.value);
+    const qtdBovinos = parseNumber(bovinosQtd.value);
+    const qtdSuinos = parseNumber(suinosQtd.value);
+    const qtdHortas = parseNumber(hortasQtd.value);
+    const qtdPastagem = parseNumber(pastagemQtd.value);
 
-    container.querySelectorAll('input[data-demand]').forEach(inp => {
-      inp.addEventListener("input", (e) => {
-        const id = e.target.getAttribute("data-demand");
-        const v = clampNumber(e.target.value, 0);
-        state.quantities[id] = Math.floor(v);
-        e.target.value = state.quantities[id];
-        recalcAll();
-      });
-    });
+    const total =
+      qtdPessoas * consumoPorUnidade.pessoas +
+      qtdBovinos * consumoPorUnidade.bovinos +
+      qtdSuinos * consumoPorUnidade.suinos +
+      qtdHortas * consumoPorUnidade.hortas +
+      qtdPastagem * consumoPorUnidade.pastagem;
+
+    totalLitrosDiaEl.textContent = arred(total, 2);
+    totalM3DiaEl.textContent = arred(total / 1000, 3);
+
+    return total;
   }
 
-  // ================== CÁLCULOS BASE ==================
-  function recalcDemand() {
-    let total = 0;
-    for (const item of demandItems) {
-      const qty = state.quantities[item.id] || 0;
-      const sub = qty * item.lpd;
-      total += sub;
-      const el = $(`sub_${item.id}`);
-      if (el) el.textContent = format(sub);
+  function calcularAMT() {
+    let hSuc = Math.max(0, parseNumber(pocoProf.value));
+    let hElev = Math.max(0, parseNumber(reservAlt.value));
+    let dist = Math.max(0, parseNumber(distTubo.value));
+
+    pocoProf.value = hSuc;
+    reservAlt.value = hElev;
+    distTubo.value = dist;
+
+    const perdas = 0.10 * dist; // modelo simplificado
+    const amt = hSuc + hElev + perdas;
+
+    distKmEl.textContent = arred(dist / 1000, 3);
+    perdasEl.textContent = arred(perdas, 2);
+    amtEl.textContent = arred(amt, 2);
+
+    return { amt, perdas, dist };
+  }
+
+  function calcularVazaoEPotencia(totalDia, amt) {
+    let horas = parseNumber(horasBomb.value, 5.5);
+    const avisos = [];
+
+    if (horas < 0.5) {
+      horas = 0.5;
+      horasBomb.value = horas;
+      avisos.push('Horas de bombeamento ajustadas para mínimo de 0,5 h/dia por segurança.');
     }
-    state.totalLitersPerDay = total;
-    $("totalLiters").textContent = format(total);
-  }
 
-  function recalcHydro() {
-    state.wellDepth = clampNumber($("wellDepth").value, 0);
-    state.tankHeight = clampNumber($("tankHeight").value, 0);
-    state.pipeDistance = clampNumber($("pipeDistance").value, 0);
+    const vazaoLh = horas > 0 ? totalDia / horas : 0;
+    const vazaoLmin = vazaoLh / 60;
+    const vazaoM3h = vazaoLh / 1000;
+    const vazaoM3dia = totalDia / 1000;
 
-    state.headLoss = 0.10 * state.pipeDistance;
-    state.amt = state.wellDepth + state.tankHeight + state.headLoss;
+    vazaoLhEl.textContent = arred(vazaoLh, 2);
+    vazaoLminEl.textContent = arred(vazaoLmin, 2);
+    vazaoM3hEl.textContent = arred(vazaoM3h, 3);
+    vazaoM3diaEl.textContent = arred(vazaoM3dia, 3);
 
-    $("headLoss").value = `${format(state.headLoss)} m`;
-    $("amt").textContent = format(state.amt);
-  }
+    let potHid = 0;
+    let potElec = 0;
 
-  function recalcFlow() {
-    state.pumpHours = clampNumber($("pumpHours").value, 0.1);
-    const flowLh = state.totalLitersPerDay / state.pumpHours;
+    if (habilitarPotenciaEl.checked && totalDia > 0 && amt > 0) {
+      const eficiencia = Math.min(1, Math.max(0.1, parseNumber(eficienciaEl.value, 0.6)));
+      eficienciaEl.value = eficiencia;
 
-    state.flowLh = Number.isFinite(flowLh) ? flowLh : 0;
-    state.flowLm = state.flowLh / 60;
-
-    $("flowLh").textContent = format(state.flowLh);
-    $("flowLm").textContent = format(state.flowLm);
-  }
-
-  function recalcPower() {
-    state.powerEnabled = $("powerToggle").checked;
-    state.efficiency = clampNumber($("efficiency").value, 0.05, 0.95);
-
-    let powerW = 0;
-    if (state.powerEnabled && state.amt > 0 && state.flowLh > 0) {
+      const Q_m3s = vazaoLh / 3600000; // L/h -> m³/s
       const rho = 1000;
       const g = 9.81;
-      const Q = state.flowLh / 3600000; // L/h -> m³/s
-      const Ph = rho * g * Q * state.amt; // W hidráulica
-      powerW = Ph / state.efficiency;      // W elétrica aprox.
+
+      potHid = rho * g * Q_m3s * amt;
+      potElec = potHid / eficiencia;
     }
 
-    state.powerW = Number.isFinite(powerW) ? powerW : 0;
-    $("powerW").textContent = format(state.powerW);
-    $("powerKW").textContent = format(state.powerW / 1000);
+    potHidEl.textContent = arred(potHid, 1);
+    potElecEl.textContent = arred(potElec, 1);
+
+    return { vazaoLh, vazaoLmin, vazaoM3h, vazaoM3dia, horas, avisos };
   }
 
-  // ================== RECOMENDAÇÃO ==================
-  function getTarget() {
-    state.flowMargin = clampNumber($("flowMargin").value, 1.0, 10.0);
-    state.headMargin = clampNumber($("headMargin").value, 1.0, 10.0);
-
-    const targetFlow = state.flowLh * state.flowMargin;
-    const targetHead = state.amt * state.headMargin;
-
-    $("targetFlow").textContent = format(targetFlow);
-    $("targetHead").textContent = format(targetHead);
-
-    return { targetFlow, targetHead };
-  }
-
-  function pumpHeadAtFlow(pump, flowLh) {
-    // 1) Curva por pontos -> interpolação
-    if (Array.isArray(pump.curvePoints) && pump.curvePoints.length >= 2) {
-      const pts = [...pump.curvePoints].sort((a, b) => a.flowLh - b.flowLh);
-
-      if (flowLh <= pts[0].flowLh) return pts[0].headM;
-      if (flowLh >= pts[pts.length - 1].flowLh) return pts[pts.length - 1].headM;
-
-      for (let i = 0; i < pts.length - 1; i++) {
-        const a = pts[i], b = pts[i + 1];
-        if (flowLh >= a.flowLh && flowLh <= b.flowLh) {
-          const t = (flowLh - a.flowLh) / (b.flowLh - a.flowLh);
-          return a.headM + t * (b.headM - a.headM);
-        }
+  // ---------- CATÁLOGO / RECOMENDAÇÃO ----------
+  function aplicarCatalogoDoTextarea() {
+    try {
+      const data = JSON.parse(catalogoJsonEl.value);
+      if (!Array.isArray(data)) {
+        alert('O JSON do catálogo deve ser um array de bombas.');
+        return;
       }
+      catalogoBombas = data;
+      alert('Catálogo aplicado com sucesso!');
+      recalcAll();
+    } catch (e) {
+      console.error(e);
+      alert('JSON inválido. Verifique a sintaxe.');
     }
-
-    // 2) Curva linear aprox: (0, Hmax) -> (Qmax, 0)
-    const Qmax = pump.maxFlowLh ?? 0;
-    const Hmax = pump.maxHeadM ?? 0;
-    if (Qmax <= 0 || Hmax <= 0) return 0;
-
-    const frac = 1 - (flowLh / Qmax);
-    return Math.max(0, Hmax * frac);
   }
 
-  function recommendPumps() {
-    const { targetFlow, targetHead } = getTarget();
+  function importarCatalogoArquivo() {
+    const file = fileCatalogoEl.files[0];
+    if (!file) {
+      alert('Selecione um arquivo JSON primeiro.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!Array.isArray(data)) {
+          alert('O JSON do catálogo deve ser um array de bombas.');
+          return;
+        }
+        catalogoBombas = data;
+        catalogoJsonEl.value = JSON.stringify(catalogoBombas, null, 2);
+        alert('Catálogo importado com sucesso!');
+        recalcAll();
+      } catch (e) {
+        console.error(e);
+        alert('Erro ao ler o JSON. Verifique o arquivo.');
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  }
 
-    const typeFilter = $("typeFilter").value;
-    const voltageFilter = $("voltageFilter").value;
+  function exportarCatalogoArquivo() {
+    const blob = new Blob([JSON.stringify(catalogoBombas, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'catalogo_bombas.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 
-    const filtered = pumpCatalog.filter(p => {
-      if (typeFilter && p.type !== typeFilter) return false;
-      if (voltageFilter && String(p.voltage ?? "") !== voltageFilter) return false;
-      return true;
+  function recomendarBombas(vazaoLh, amt) {
+    const margemVazao = Math.max(1, parseNumber(margemVazaoEl.value, 1.2));
+    const margemAmt = Math.max(1, parseNumber(margemAmtEl.value, 1.1));
+
+    margemVazaoEl.value = margemVazao;
+    margemAmtEl.value = margemAmt;
+
+    const metaFlow = vazaoLh * margemVazao;
+    const metaAmt = amt * margemAmt;
+
+    const filtroTipo = filtroTipoEl.value.trim();
+    const filtroTensao = filtroTensaoEl.value.trim().toLowerCase();
+
+    const bombasComScore = catalogoBombas.map((b) => {
+      const atendeTipo = !filtroTipo || b.tipo === filtroTipo;
+      const atendeTensao = !filtroTensao ||
+        (b.tensao && String(b.tensao).toLowerCase().includes(filtroTensao));
+
+      const atendeCapacidade =
+        b.maxFlow >= metaFlow &&
+        b.maxHead >= metaAmt;
+
+      let score = Infinity;
+      if (atendeCapacidade && atendeTipo && atendeTensao) {
+        const folgaFlow = (b.maxFlow - metaFlow) / metaFlow;
+        const folgaHead = (b.maxHead - metaAmt) / metaAmt;
+        const pesoPot = b.potencia ? b.potencia / 1000 : 0;
+        score = Math.max(folgaFlow, 0) + Math.max(folgaHead, 0) + pesoPot;
+      }
+
+      return { ...b, atende: atendeCapacidade && atendeTipo && atendeTensao, score };
     });
 
-    const results = filtered.map(p => {
-      const headAtTargetFlow = pumpHeadAtFlow(p, targetFlow);
-      const meets = headAtTargetFlow >= targetHead;
-      const headMarginM = headAtTargetFlow - targetHead;
+    bombasComScore.sort((a, b) => a.score - b.score);
 
-      const powerCandidateW = (p.powerW ?? null);
-      const estimatedNeededW = state.powerW > 0 ? state.powerW : 0;
+    const atendem = bombasComScore.filter(b => b.atende && Number.isFinite(b.score));
+    const melhor = atendem[0] || null;
+    const top5 = bombasComScore.slice(0, 5);
 
-      const baseW = Math.max(powerCandidateW ?? 0, estimatedNeededW);
-      const pvWp = baseW * 1.3;
+    // Atualiza tabela
+    tabelaBombasEl.innerHTML = '';
+    top5.forEach((b, idx) => {
+      const tr = document.createElement('tr');
+      if (b === melhor) {
+        tr.style.backgroundColor = '#e6ffe6';
+      }
+      const status = b.atende ? 'Atende meta' : 'Não atende';
+      const statusClass = b.atende ? 'status-ok' : 'status-fail';
 
-      const scorePower = (powerCandidateW ?? baseW) || 999999;
-      const scorePrice = (p.price ?? 999999);
+      tr.innerHTML = `
+        <td>${idx + 1}</td>
+        <td>${b.nome || '-'}</td>
+        <td>${b.tipo || '-'}</td>
+        <td>${b.tensao || '-'}</td>
+        <td>${b.potencia ?? '-'}</td>
+        <td>${b.maxFlow ?? '-'}</td>
+        <td>${b.maxHead ?? '-'}</td>
+        <td class="${statusClass}">${status}</td>
+      `;
+      tabelaBombasEl.appendChild(tr);
+    });
 
-      const score = (meets ? 0 : 1e9) + scorePower * 1.0 + scorePrice * 0.05 - headMarginM * 2;
-
-      return { pump: p, meets, headAtTargetFlow, headMarginM, pvWp, score };
-    }).sort((a, b) => a.score - b.score);
-
-    renderRecommendation(results, targetFlow, targetHead);
-  }
-
-  function renderRecommendation(results, targetFlow, targetHead) {
-    const good = results.filter(r => r.meets);
-
-    if (good.length === 0 || targetFlow <= 0 || targetHead <= 0) {
-      $("bestPumpName").textContent = "—";
-      $("bestPumpReason").textContent =
-        (targetFlow <= 0 || targetHead <= 0)
-          ? "Informe consumo/AMT para recomendar."
-          : "Nenhuma bomba do catálogo atende a meta. Aumente o catálogo ou reduza filtros.";
-      $("pvWp").textContent = "0";
+    if (melhor) {
+      bombaRecomendadaEl.textContent = `${melhor.nome} (${melhor.tipo}, ${melhor.tensao})`;
     } else {
-      const best = good[0];
-      const p = best.pump;
-      $("bestPumpName").textContent = p.name;
-      $("bestPumpReason").textContent =
-        `Atende ${format(targetFlow)} L/h @ ${format(targetHead)} m. Head estimado na vazão: ${format(best.headAtTargetFlow)} m.`;
-      $("pvWp").textContent = format(best.pvWp);
+      bombaRecomendadaEl.textContent = 'Nenhuma bomba atende às metas atuais.';
     }
 
-    const container = $("recommendTable");
-    if (results.length === 0) {
-      container.innerHTML = `<div class="muted">Sem itens no catálogo (ou filtros muito restritos).</div>`;
+    return { metaFlow, metaAmt, melhor, top5 };
+  }
+
+  // ---------- AVISOS ----------
+  function atualizarAvisos(amt, avisosExtras) {
+    const avisos = [...(avisosExtras || [])];
+
+    if (amt === 0) {
+      avisos.push('AMT ficou 0 m. Verifique profundidade do poço, altura do reservatório e distância da tubulação.');
+    }
+
+    if (!avisos.length) {
+      avisosEl.innerHTML = '';
       return;
     }
 
-    container.innerHTML = `
-      <table>
-        <thead>
-          <tr>
-            <th>Bomba</th>
-            <th>Tipo / Tensão</th>
-            <th class="right">Head em ${format(targetFlow)} L/h</th>
-            <th class="right">Potência</th>
-            <th class="right">Preço</th>
-            <th class="right">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${results.slice(0, 8).map(r => {
-            const p = r.pump;
-            const status = r.meets ? `<span class="ok">OK</span>` : `<span class="bad">Não atende</span>`;
-            const rowClass = r.meets ? "goodRow" : "warnRow";
-            const powerTxt = (p.powerW != null) ? `${format(p.powerW)} W` : `<span class="muted">—</span>`;
-            const priceTxt = (p.price != null) ? `R$ ${format(p.price)}` : `<span class="muted">—</span>`;
-            return `
-              <tr class="${rowClass}">
-                <td>
-                  <b>${p.name}</b><br>
-                  <span class="small">${p.curvePoints ? "Curva por pontos" : "Curva linear aprox."}</span>
-                </td>
-                <td>${p.type ?? "—"}<br><span class="small">${p.voltage ?? "—"} V</span></td>
-                <td class="right">${format(r.headAtTargetFlow)} m<br><span class="small">sobra: ${format(r.headMarginM)} m</span></td>
-                <td class="right">${powerTxt}</td>
-                <td class="right">${priceTxt}</td>
-                <td class="right">${status}</td>
-              </tr>
-            `;
-          }).join("")}
-        </tbody>
-      </table>
-      <div class="small" style="margin-top:8px">
-        Mostrando top 8 do ranking. Critério: atender meta → menor potência → menor preço → maior folga de head.
-      </div>
-    `;
+    const ul = avisos.map(a => `<li>${a}</li>`).join('');
+    avisosEl.innerHTML = `<strong>Avisos:</strong><ul>${ul}</ul>`;
   }
 
-  // ================== CATÁLOGO (JSON textarea) ==================
-  function syncCatalogTextarea() {
-    $("catalogJson").value = JSON.stringify(pumpCatalog, null, 2);
+  // ---------- RESUMO / PDF / LOCALSTORAGE ----------
+  function montarResumoTexto(res) {
+    if (!res) {
+      resumoTextoEl.textContent = 'Preencha os dados para gerar o resumo.';
+      return;
+    }
+
+    const {
+      totalDia,
+      amt,
+      perdas,
+      dist,
+      vazaoLh,
+      vazaoLmin,
+      vazaoM3h,
+      vazaoM3dia,
+      horas,
+      metaFlow,
+      metaAmt,
+      melhor,
+      top3
+    } = res;
+
+    let texto = '';
+    texto += '=== RESUMO DO PROJETO DE BOMBEAMENTO ===\n\n';
+    texto += `Demanda total: ${arred(totalDia, 2)} L/dia (${arred(totalDia / 1000, 3)} m³/dia)\n`;
+    texto += `Profundidade do poço: ${arred(parseNumber(pocoProf.value), 2)} m\n`;
+    texto += `Altura do reservatório: ${arred(parseNumber(reservAlt.value), 2)} m\n`;
+    texto += `Distância da tubulação: ${arred(dist, 2)} m (${arred(dist / 1000, 3)} km)\n`;
+    texto += `Perdas de carga (10%): ${arred(perdas, 2)} m\n`;
+    texto += `AMT total: ${arred(amt, 2)} m\n\n`;
+
+    texto += `Horas de bombeamento: ${arred(horas, 2)} h/dia\n`;
+    texto += `Vazão necessária: ${arred(vazaoLh, 2)} L/h (${arred(vazaoLmin, 2)} L/min)\n`;
+    texto += `Vazão em m³: ${arred(vazaoM3h, 3)} m³/h (${arred(vazaoM3dia, 3)} m³/dia)\n\n`;
+
+    texto += `Meta com margens: ${arred(metaFlow, 2)} L/h @ ${arred(metaAmt, 2)} m\n`;
+    texto += '\nBomba recomendada:\n';
+    if (melhor) {
+      texto += `- ${melhor.nome} (${melhor.tipo}, ${melhor.tensao}) - Potência: ${melhor.potencia} W\n`;
+    } else {
+      texto += '- Nenhuma bomba atende às metas atuais.\n';
+    }
+
+    if (top3 && top3.length) {
+      texto += '\nTop 3 opções consideradas:\n';
+      top3.forEach((b, i) => {
+        texto += `${i + 1}. ${b.nome} (${b.tipo}, ${b.tensao}) - Qmax: ${b.maxFlow} L/h, Hmax: ${b.maxHead} m\n`;
+      });
+    }
+
+    resumoTextoEl.textContent = texto;
   }
 
-  function loadCatalogFromTextarea() {
-    const txt = $("catalogJson").value.trim();
-    if (!txt) return;
+  function salvarProjeto() {
+    const state = {
+      demanda: {
+        pessoas: parseNumber(pessoasQtd.value),
+        bovinos: parseNumber(bovinosQtd.value),
+        suinos: parseNumber(suinosQtd.value),
+        hortas: parseNumber(hortasQtd.value),
+        pastagem: parseNumber(pastagemQtd.value)
+      },
+      hidraulica: {
+        poco: parseNumber(pocoProf.value),
+        reservatorio: parseNumber(reservAlt.value),
+        distancia: parseNumber(distTubo.value)
+      },
+      horas: parseNumber(horasBomb.value),
+      eficiencia: parseNumber(eficienciaEl.value),
+      habilitarPotencia: habilitarPotenciaEl.checked,
+      margens: {
+        vazao: parseNumber(margemVazaoEl.value),
+        amt: parseNumber(margemAmtEl.value)
+      },
+      filtros: {
+        tipo: filtroTipoEl.value,
+        tensao: filtroTensaoEl.value
+      },
+      catalogo: catalogoBombas
+    };
+
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
+    alert('Projeto salvo no navegador (localStorage).');
+  }
+
+  function carregarProjeto() {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (!raw) {
+      alert('Nenhum projeto salvo encontrado.');
+      return;
+    }
     try {
-      const parsed = JSON.parse(txt);
-      if (!Array.isArray(parsed)) throw new Error("JSON deve ser uma lista de bombas.");
-      pumpCatalog = parsed;
-      recommendPumps();
+      const state = JSON.parse(raw);
+
+      // Demanda
+      pessoasQtd.value = state.demanda?.pessoas ?? 0;
+      bovinosQtd.value = state.demanda?.bovinos ?? 0;
+      suinosQtd.value = state.demanda?.suinos ?? 0;
+      hortasQtd.value = state.demanda?.hortas ?? 0;
+      pastagemQtd.value = state.demanda?.pastagem ?? 0;
+
+      // Hidráulica
+      pocoProf.value = state.hidraulica?.poco ?? 0;
+      reservAlt.value = state.hidraulica?.reservatorio ?? 0;
+      distTubo.value = state.hidraulica?.distancia ?? 0;
+
+      // Vazão / potência
+      horasBomb.value = state.horas ?? 5.5;
+      eficienciaEl.value = state.eficiencia ?? 0.6;
+      habilitarPotenciaEl.checked = !!state.habilitarPotencia;
+
+      // Margens / filtros
+      margemVazaoEl.value = state.margens?.vazao ?? 1.2;
+      margemAmtEl.value = state.margens?.amt ?? 1.1;
+      filtroTipoEl.value = state.filtros?.tipo ?? '';
+      filtroTensaoEl.value = state.filtros?.tensao ?? '';
+
+      // Catálogo
+      if (Array.isArray(state.catalogo)) {
+        catalogoBombas = state.catalogo;
+        catalogoJsonEl.value = JSON.stringify(catalogoBombas, null, 2);
+      }
+
+      recalcAll();
+      alert('Projeto carregado com sucesso.');
     } catch (e) {
-      alert("JSON inválido: " + e.message);
+      console.error(e);
+      alert('Erro ao carregar o projeto salvo.');
     }
   }
 
-  function resetCatalog() {
-    pumpCatalog = deepClone(SAMPLE_CATALOG);
-    syncCatalogTextarea();
-    recommendPumps();
-  }
-
-  // ================== MAPA (Leaflet) ==================
-  let map, markerA = null, markerB = null, line = null;
-
-  function initMap() {
-    map = L.map("map").setView([-15.8, -47.9], 4);
-
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "&copy; OpenStreetMap"
-    }).addTo(map);
-
-    map.on("click", (e) => {
-      if (!markerA) {
-        markerA = L.marker(e.latlng).addTo(map).bindPopup("Captação").openPopup();
-        return;
-      }
-
-      if (!markerB) {
-        markerB = L.marker(e.latlng).addTo(map).bindPopup("Entrega").openPopup();
-        line = L.polyline([markerA.getLatLng(), markerB.getLatLng()]).addTo(map);
-
-        const d = map.distance(markerA.getLatLng(), markerB.getLatLng()); // metros
-        $("mapDistance").textContent = format(d);
-        $("pipeDistance").value = d.toFixed(1);
-        recalcAll();
-      }
-    });
-
-    $("resetMap").addEventListener("click", resetMapPoints);
-  }
-
-  function resetMapPoints() {
-    if (markerA) { map.removeLayer(markerA); markerA = null; }
-    if (markerB) { map.removeLayer(markerB); markerB = null; }
-    if (line) { map.removeLayer(line); line = null; }
-    $("mapDistance").textContent = "0";
-  }
-
-  // ================== PDF (jsPDF) ==================
-  function addWrappedText(doc, text, x, y, maxWidth, lineHeight) {
-    const lines = doc.splitTextToSize(text, maxWidth);
-    lines.forEach((line, i) => doc.text(line, x, y + i * lineHeight));
-    return y + lines.length * lineHeight;
-  }
-
-  function getTopRecommendationsForPdf(limit = 5) {
-    const { targetFlow, targetHead } = getTarget();
-
-    const typeFilter = $("typeFilter").value;
-    const voltageFilter = $("voltageFilter").value;
-
-    const filtered = pumpCatalog.filter(p => {
-      if (typeFilter && p.type !== typeFilter) return false;
-      if (voltageFilter && String(p.voltage ?? "") !== voltageFilter) return false;
-      return true;
-    });
-
-    const results = filtered.map(p => {
-      const headAtTargetFlow = pumpHeadAtFlow(p, targetFlow);
-      const meets = headAtTargetFlow >= targetHead;
-      const headMarginM = headAtTargetFlow - targetHead;
-
-      const powerCandidateW = (p.powerW ?? null);
-      const scorePower = (powerCandidateW ?? 999999);
-      const scorePrice = (p.price ?? 999999);
-      const score = (meets ? 0 : 1e9) + scorePower * 1.0 + scorePrice * 0.05 - headMarginM * 2;
-
-      return {
-        name: p.name,
-        type: p.type ?? "—",
-        voltage: p.voltage ?? "—",
-        powerW: p.powerW ?? null,
-        price: p.price ?? null,
-        headAtTargetFlow,
-        meets,
-        score
-      };
-    }).sort((a, b) => a.score - b.score);
-
-    const best = results.find(r => r.meets) ?? null;
-    return { best, results: results.slice(0, limit), targetFlow, targetHead };
-  }
-
-  function generatePdfReport() {
-    if (!window.jspdf?.jsPDF) {
-      alert("Biblioteca jsPDF não carregou. Verifique sua internet e as tags <script> no index.html.");
+  function gerarPdf() {
+    if (!lastResults) {
+      alert('Calcule os resultados antes de gerar o PDF.');
       return;
     }
 
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const doc = new jsPDF();
 
-    const marginX = 14;
-    const pageW = 210;
-    const maxW = pageW - marginX * 2;
+    const hoje = new Date();
+    const dataStr = hoje.toLocaleString('pt-BR');
 
-    let y = 16;
-
-    // Cabeçalho
-    doc.setFont("helvetica", "bold");
+    // Cabeçalho simples
     doc.setFontSize(14);
-    doc.text("Relatório de Dimensionamento - Bombeamento Solar", marginX, y);
-    y += 7;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    const now = new Date();
-    doc.text(`Gerado em: ${now.toLocaleString("pt-BR")}`, marginX, y);
-    y += 8;
-
-    // 1) Demanda
-    doc.setFont("helvetica", "bold");
+    doc.text('Universidade Estadual de Goiás - UEG', 10, 15);
     doc.setFontSize(12);
-    doc.text("1) Demanda diária", marginX, y);
-    y += 6;
-
-    doc.setFont("helvetica", "normal");
+    doc.text('Gerência de Projeto de Software', 10, 22);
+    doc.text('Relatório de Dimensionamento de Bombeamento Solar', 10, 29);
     doc.setFontSize(10);
+    doc.text(`Data/Hora: ${dataStr}`, 10, 36);
 
-    // detalhar categorias (mais profissional)
-    const demandLines = demandItems.map(it => {
-      const qty = state.quantities[it.id] || 0;
-      const sub = qty * it.lpd;
-      return `- ${it.label}: ${qty} × ${format(it.lpd)} = ${format(sub)} L/dia`;
-    }).join("\n");
-
-    y = addWrappedText(
-      doc,
-      `${demandLines}\n\nConsumo total diário: ${format(state.totalLitersPerDay)} L/dia`,
-      marginX, y, maxW, 5
-    );
-    y += 2;
-
-    // 2) Hidrodinâmica
-    if (y > 255) { doc.addPage(); y = 16; }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("2) Hidrodinâmica (AMT)", marginX, y);
-    y += 6;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    const hydroText =
-      `Profundidade do poço (sucção): ${format(state.wellDepth)} m\n` +
-      `Altura do reservatório (elevação): ${format(state.tankHeight)} m\n` +
-      `Distância da tubulação: ${format(state.pipeDistance)} m\n` +
-      `Perdas (≈ 10% da distância): ${format(state.headLoss)} m\n` +
-      `AMT (total): ${format(state.amt)} m`;
-    y = addWrappedText(doc, hydroText, marginX, y, maxW, 5);
-    y += 2;
-
-    // 3) Vazão
-    if (y > 255) { doc.addPage(); y = 16; }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("3) Vazão mínima necessária", marginX, y);
-    y += 6;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    const flowText =
-      `Horas de bombeamento/dia: ${format(state.pumpHours)} h\n` +
-      `Vazão necessária: ${format(state.flowLh)} L/h (${format(state.flowLm)} L/min)`;
-    y = addWrappedText(doc, flowText, marginX, y, maxW, 5);
-    y += 2;
-
-    // 4) Potência
-    if (y > 255) { doc.addPage(); y = 16; }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("4) Potência aproximada (opcional)", marginX, y);
-    y += 6;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    const powerText = state.powerEnabled
-      ? `Eficiência considerada: ${format(state.efficiency)}\nPotência elétrica estimada: ${format(state.powerW)} W (${format(state.powerW/1000)} kW)`
-      : `Cálculo de potência desativado pelo usuário.`;
-    y = addWrappedText(doc, powerText, marginX, y, maxW, 5);
-    y += 2;
-
-    // 5) Recomendação
-    const rec = getTopRecommendationsForPdf(5);
-
-    if (y > 245) { doc.addPage(); y = 16; }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("5) Recomendação de bomba (catálogo)", marginX, y);
-    y += 6;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    const metaText =
-      `Margem vazão: ${format(state.flowMargin)} | Margem AMT: ${format(state.headMargin)}\n` +
-      `Meta: ${format(rec.targetFlow)} L/h @ ${format(rec.targetHead)} m`;
-    y = addWrappedText(doc, metaText, marginX, y, maxW, 5);
-    y += 2;
-
-    if (!rec.best) {
-      y = addWrappedText(
-        doc,
-        "Nenhuma bomba do catálogo atende a meta atual (considere ampliar o catálogo ou remover filtros).",
-        marginX, y, maxW, 5
-      );
-      y += 2;
-    } else {
-      y = addWrappedText(
-        doc,
-        `Bomba recomendada: ${rec.best.name}\n` +
-        `Tipo/Tensão: ${rec.best.type} / ${rec.best.voltage} V\n` +
-        `Head estimado na meta de vazão: ${format(rec.best.headAtTargetFlow)} m`,
-        marginX, y, maxW, 5
-      );
-      y += 2;
-    }
-
-    // Top opções
-    if (y > 245) { doc.addPage(); y = 16; }
-    doc.setFont("helvetica", "bold");
+    let y = 44;
     doc.setFontSize(11);
-    doc.text("Top opções (ranking)", marginX, y);
-    y += 6;
+    doc.text('1. Entradas do Sistema', 10, y); y += 6;
 
-    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(`Demanda total: ${arred(lastResults.totalDia, 2)} L/dia (${arred(lastResults.totalDia / 1000, 3)} m³/dia)`, 10, y); y += 5;
+    doc.text(`Profundidade do poço: ${arred(parseNumber(pocoProf.value), 2)} m`, 10, y); y += 5;
+    doc.text(`Altura do reservatório: ${arred(parseNumber(reservAlt.value), 2)} m`, 10, y); y += 5;
+    doc.text(`Distância da tubulação: ${arred(lastResults.dist, 2)} m (${arred(lastResults.dist / 1000, 3)} km)`, 10, y); y += 5;
+    doc.text(`Horas de bombeamento: ${arred(lastResults.horas, 2)} h/dia`, 10, y); y += 5;
+    doc.text(`Margem vazão: ${arred(parseNumber(margemVazaoEl.value), 2)}`, 10, y); y += 5;
+    doc.text(`Margem AMT: ${arred(parseNumber(margemAmtEl.value), 2)}`, 10, y); y += 7;
+
+    doc.setFontSize(11);
+    doc.text('2. Resultados de Cálculo', 10, y); y += 6;
+    doc.setFontSize(9);
+    doc.text(`Perdas de carga (10%): ${arred(lastResults.perdas, 2)} m`, 10, y); y += 5;
+    doc.text(`AMT total: ${arred(lastResults.amt, 2)} m`, 10, y); y += 5;
+    doc.text(`Vazão necessária: ${arred(lastResults.vazaoLh, 2)} L/h (${arred(lastResults.vazaoLmin, 2)} L/min)`, 10, y); y += 5;
+    doc.text(`Vazão em m³: ${arred(lastResults.vazaoM3h, 3)} m³/h (${arred(lastResults.vazaoM3dia, 3)} m³/dia)`, 10, y); y += 5;
+    doc.text(`Meta com margens: ${arred(lastResults.metaFlow, 2)} L/h @ ${arred(lastResults.metaAmt, 2)} m`, 10, y); y += 7;
+
+    doc.setFontSize(11);
+    doc.text('3. Recomendação de Bomba', 10, y); y += 6;
     doc.setFontSize(9);
 
-    rec.results.forEach((r, idx) => {
-      if (y > 285) { doc.addPage(); y = 16; }
-      const line =
-        `${idx + 1}. ${r.meets ? "OK" : "NÃO"} | ${r.name} | ` +
-        `${r.type}/${r.voltage}V | Head: ${format(r.headAtTargetFlow)} m` +
-        `${r.powerW != null ? ` | ${format(r.powerW)} W` : ""}` +
-        `${r.price != null ? ` | R$ ${format(r.price)}` : ""}`;
-      y = addWrappedText(doc, line, marginX, y, maxW, 4.5);
-      y += 1;
+    if (lastResults.melhor) {
+      doc.text(
+        `Recomendada: ${lastResults.melhor.nome} (${lastResults.melhor.tipo}, ${lastResults.melhor.tensao}) - Potência: ${lastResults.melhor.potencia} W`,
+        10, y
+      );
+      y += 6;
+    } else {
+      doc.text('Nenhuma bomba atende às metas atuais.', 10, y); y += 6;
+    }
+
+    doc.text('Top 5 bombas avaliadas:', 10, y); y += 5;
+    lastResults.top5.forEach((b, idx) => {
+      if (y > 280) { // nova página se estourar
+        doc.addPage();
+        y = 20;
+      }
+      const status = b.atende ? 'Atende meta' : 'Não atende';
+      const linha = `${idx + 1}. ${b.nome} (${b.tipo}, ${b.tensao}) - Qmax:${b.maxFlow} L/h, Hmax:${b.maxHead} m - ${status}`;
+      doc.text(linha, 10, y);
+      y += 5;
     });
 
-    // Rodapé
-    doc.setFontSize(8);
-    doc.setTextColor(120);
-    doc.text(
-      "Observação: modelo simplificado (perdas aproximadas). Para projeto real, considerar diâmetro, material e conexões.",
-      marginX, 292
-    );
-    doc.setTextColor(0);
-
-    doc.save("relatorio-bombeamento-solar.pdf");
+    doc.save('relatorio_bombeamento_solar.pdf');
   }
 
-  // ================== ORQUESTRAÇÃO ==================
+  function copiarResumoClipboard() {
+    const texto = resumoTextoEl.textContent;
+    if (!texto.trim()) {
+      alert('Não há resumo para copiar.');
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(texto).then(() => {
+        alert('Resumo copiado para a área de transferência.');
+      }).catch(() => {
+        alert('Não foi possível copiar automaticamente. Copie manualmente.');
+      });
+    } else {
+      alert('Navegador sem suporte a clipboard API. Copie manualmente.');
+    }
+  }
+
+  // ---------- RE-CÁLCULO GERAL ----------
   function recalcAll() {
-    recalcDemand();
-    recalcHydro();
-    recalcFlow();
-    recalcPower();
-    recommendPumps();
+    const totalDia = calcularDemandaTotal();
+    const { amt, perdas, dist } = calcularAMT();
+    const { vazaoLh, vazaoLmin, vazaoM3h, vazaoM3dia, horas, avisos } = calcularVazaoEPotencia(totalDia, amt);
+    const { metaFlow, metaAmt, melhor, top5 } = recomendarBombas(vazaoLh, amt);
+
+    atualizarAvisos(amt, avisos);
+
+    lastResults = {
+      totalDia,
+      amt,
+      perdas,
+      dist,
+      vazaoLh,
+      vazaoLmin,
+      vazaoM3h,
+      vazaoM3dia,
+      horas,
+      metaFlow,
+      metaAmt,
+      melhor,
+      top5,
+      top3: top5.slice(0, 3)
+    };
+
+    montarResumoTexto(lastResults);
   }
 
-  function attachListeners() {
-    [
-      "wellDepth","tankHeight","pipeDistance","pumpHours",
-      "efficiency","powerToggle","flowMargin","headMargin",
-      "typeFilter","voltageFilter"
-    ].forEach(id => {
-      $(id).addEventListener("input", recalcAll);
-      $(id).addEventListener("change", recalcAll);
-    });
-
-    $("recalcRecommend").addEventListener("click", recommendPumps);
-    $("loadCatalog").addEventListener("click", loadCatalogFromTextarea);
-    $("resetCatalog").addEventListener("click", resetCatalog);
-  }
-
-  // ================== INIT ==================
-  document.addEventListener("DOMContentLoaded", () => {
-    renderDemandTable();
-    attachListeners();
-    initMap();
-    resetCatalog();
-    recalcAll();
-
-    // ✅ PDF
-    $("btnPdf").addEventListener("click", generatePdfReport);
+  // ---------- EVENTOS ----------
+  [
+    pessoasQtd, bovinosQtd, suinosQtd, hortasQtd, pastagemQtd,
+    pocoProf, reservAlt, distTubo,
+    horasBomb, eficienciaEl, habilitarPotenciaEl,
+    margemVazaoEl, margemAmtEl,
+    filtroTipoEl, filtroTensaoEl
+  ].forEach(el => {
+    el.addEventListener('input', recalcAll);
+    el.addEventListener('change', recalcAll);
   });
-})();
+
+  btnAplicarCatalogo.addEventListener('click', aplicarCatalogoDoTextarea);
+  btnImportCatalogo.addEventListener('click', importarCatalogoArquivo);
+  btnExportCatalogo.addEventListener('click', exportarCatalogoArquivo);
+
+  btnSalvarProjeto.addEventListener('click', salvarProjeto);
+  btnCarregarProjeto.addEventListener('click', carregarProjeto);
+  btnGerarPdf.addEventListener('click', gerarPdf);
+  btnCopiarResumo.addEventListener('click', copiarResumoClipboard);
+
+  btnResetMapa.addEventListener('click', () => {
+    resetMapa();
+    recalcAll();
+  });
+
+  // Inicialização
+  initMap();
+  recalcAll();
+});
