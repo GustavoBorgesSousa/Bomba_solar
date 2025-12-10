@@ -15,6 +15,7 @@
     crossorigin=""
   />
 </head>
+
 <body>
 <header>
   <h1>Sistema de Bombeamento com Energia Solar</h1>
@@ -25,41 +26,47 @@
   <!-- =================== DEMANDA =================== -->
   <section class="card" id="sec-demanda">
     <h2>1. Demanda diária de água</h2>
-    <p>Informe a quantidade de cada categoria. Os consumos médios são fixos (L/dia por unidade).</p>
+    <p>Informe a quantidade de cada categoria. Os consumos médios são fixos (L/dia por unidade ou por área).</p>
 
     <table class="tabela-demanda">
       <thead>
       <tr>
         <th>Categoria</th>
-        <th>Consumo (L/dia)</th>
-        <th>Quantidade</th>
+        <th>Consumo</th>
+        <th>Quantidade / Área</th>
       </tr>
       </thead>
       <tbody>
       <tr>
         <td>Pessoas</td>
-        <td>84</td>
+        <td>84 L/dia</td>
         <td><input type="number" id="pessoasQtd" min="0" step="1" value="0"></td>
       </tr>
       <tr>
         <td>Bovinos</td>
-        <td>45</td>
+        <td>45 L/dia</td>
         <td><input type="number" id="bovinosQtd" min="0" step="1" value="0"></td>
       </tr>
       <tr>
         <td>Suínos</td>
-        <td>12,5</td>
+        <td>12,5 L/dia</td>
         <td><input type="number" id="suinosQtd" min="0" step="1" value="0"></td>
       </tr>
+
+      <!-- >>> REFINADO POR ÁREA <<< -->
       <tr>
-        <td>Hortas</td>
-        <td>7</td>
-        <td><input type="number" id="hortasQtd" min="0" step="1" value="0"></td>
+        <td>Horta (área)</td>
+        <td>7 L/m²/dia</td>
+        <td>
+          <input type="number" id="hortaAreaM2" min="0" step="1" value="0">
+        </td>
       </tr>
       <tr>
-        <td>Pastagem</td>
-        <td>50.000</td>
-        <td><input type="number" id="pastagemQtd" min="0" step="1" value="0"></td>
+        <td>Pastagem (área)</td>
+        <td>50.000 L/ha/dia</td>
+        <td>
+          <input type="number" id="pastagemAreaHa" min="0" step="0.01" value="0">
+        </td>
       </tr>
       </tbody>
     </table>
@@ -215,7 +222,9 @@
           <th>Status</th>
         </tr>
         </thead>
-        <tbody id="tabelaBombas"></tbody>
+        <tbody id="tabelaBombas">
+        <!-- Preenchido via JS -->
+        </tbody>
       </table>
     </div>
   </section>
@@ -239,15 +248,19 @@
   <small>Projeto acadêmico - Bombeamento com energia solar.</small>
 </footer>
 
-<!-- Leaflet -->
+<!-- Scripts -->
 <script
   src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
   integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
   crossorigin=""
 ></script>
 
-<!-- jsPDF (SEM integrity pra não bloquear) -->
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<!-- jsPDF (sem integrity para evitar bloqueio por hash divergente no CDN) -->
+<script
+  src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
+  crossorigin="anonymous"
+  referrerpolicy="no-referrer"
+></script>
 
 <script src="app.js"></script>
 </body>
