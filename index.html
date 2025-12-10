@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Calculadora de Bombeamento Solar + Recomendação de Bomba</title>
+
+  <!-- Leaflet (CSS) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+  <!-- Seu CSS -->
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <header class="page-header">
+    <h1>Calculadora de Bombeamento Solar + Recomendação de Bomba</h1>
+    <p>Calcule demanda diária, AMT, vazão mínima, potência aproximada e gere relatório em PDF.</p>
+  </header>
+
+  <main class="wrap">
+    <!-- ESQUERDA -->
+    <section class="card">
+      <h2>1) Demanda diária de água</h2>
+      <div class="muted">Defina as quantidades. O sistema soma automaticamente o consumo em L/dia.</div>
+      <div class="sp-10"></div>
+
+      <div id="demandTable"></div>
+
+      <div class="sp-12"></div>
+
+      <div class="kpi">
+        <div class="box">
+          <div class="muted">Consumo total diário</div>
+          <div class="val"><span id="totalLiters">0</span> <span class="muted">L/dia</span></div>
+        </div>
+        <div class="box">
+          <div class="muted">Insolação (referência)</div>
+          <div class="val">11,5 <span class="muted">h/dia</span></div>
+        </div>
+      </div>
+
+      <div class="sp-16"></div>
+
+      <h2>2) Hidrodinâmica (AMT)</h2>
+      <div class="grid2">
+        <div>
+          <label>Profundidade do poço (m) — altura de sucção</label>
+          <input type="number" id="wellDepth" min="0" step="0.01" value="0">
+        </div>
+        <div>
+          <label>Altura do reservatório (m) — elevação</label>
+          <input type="number" id="tankHeight" min="0" step="0.01" value="0">
+        </div>
+      </div>
+
+      <div class="sp-10"></div>
+
+      <div class="grid2">
+        <div>
+          <label>Distância da tubulação (m)</label>
+          <input type="number" id="pipeDistance" min="0" step="0.1" value="0">
+          <div class="small">Perdas de carga ≈ 10% da distância</div>
+        </div>
+        <div>
+          <label>Perdas de carga (m) (auto)</label>
+          <input type="text" id="headLoss" readonly value="0">
+        </div>
+      </div>
+
+      <div class="sp-10"></div>
+
+      <div class="kpi">
+        <div class="box">
+          <div class="muted">AMT (Altura Manométrica Total)</div>
+          <div class="val"><span id="amt">0</span> <span class="muted">m</span></div>
+        </div>
+        <div class="box">
+          <div class="muted">Fórmula usada</div>
+          <div class="small"><b>AMT = sucção + elevação + perdas</b> (perdas ≈ 10% da tubulação).</div>
+        </div>
+      </div>
+
+      <div class="sp-16"></div>
+
+      <h2>3) Tempo de bombeamento e vazão mínima</h2>
+      <div class="grid2">
+        <div>
+          <label>Horas de bombeamento/dia (padrão do professor: 5,5)</label>
+          <input type="number" id="pumpHours" min="0.1" step="0.1" value="5.5">
+        </div>
+        <div class="box">
+          <div class="muted">Cálculo</div>
+          <div class="small"><b>Vazão (L/h) = L/dia ÷ horas</b> e <b>L/min = (L/h) ÷ 60</b></div>
+        </div>
+      </div>
+
+      <div class="sp-10"></div>
+
+      <div class="kpi">
+        <div class="box">
+          <div class="muted">Vazão necessária</div>
+          <div class="val"><span id="flowLh">0</span> <span class="muted">L/h</span></div>
+          <div class="small"><span id="flowLm">0</span> L/min</div>
+        </div>
+        <div class="box">
+          <div class="muted">Dica prática</div>
+          <div class="small">Na seleção final, aplique margem (ex.: +20% vazão) para folga real.</div>
+        </div>
+      </div>
+
+      <div class="footer-note">
+        * Modelo simplificado (como no enunciado). Em projetos reais, perdas dependem de diâmetro, conexões, material e vazão.
+      </div>
+    </section>
+
+    <!-- DIREITA -->
+    <section class="card">
+      <h2>4) Potência aproximada (opcional)</h2>
+
+      <div class="toggle">
+        <input type="checkbox" id="powerToggle" checked />
+        <div class="muted">Calcular potência elétrica aproximada (W)</div>
+      </div>
+
+      <div class="sp-10"></div>
+
+      <div class="grid2">
+        <div>
+          <label>Eficiência total (0 a 1) — sugestão: 0,35</label>
+          <input type="number" id="efficiency" min="0.05" max="0.95" step="0.01" value="0.35">
+        </div>
+        <div class="box">
+          <div class="muted">Resultado</div>
+          <div class="val"><span id="powerW">0</span> <span class="muted">W</span></div>
+          <div class="small"><span id="powerKW">0</span> kW</div>
+        </div>
+      </div>
+
+      <div class="sp-12"></div>
+
+      <h2>5) Mapa para medir a distância (Leaflet)</h2>
+      <div class="muted">Clique no mapa: 1º ponto (captação) e 2º ponto (entrega). A distância entra em “Distância da tubulação”.</div>
+      <div class="sp-10"></div>
+
+      <div id="map"></div>
+
+      <div class="sp-10"></div>
+      <div class="row">
+        <span class="badge">Distância medida: <b id="mapDistance">0</b> m</span>
+        <button class="btn" id="resetMap" type="button">Resetar pontos</button>
+      </div>
+
+      <div class="sp-16"></div>
+
+      <h2>6) Recomendação de bomba (catálogo)</h2>
+      <div class="muted">Aplica margens e seleciona bombas que atendem <b>AMT</b> e <b>vazão</b>.</div>
+
+      <div class="sp-10"></div>
+
+      <div class="grid2">
+        <div>
+          <label>Margem de vazão (ex.: 1,20 = +20%)</label>
+          <input type="number" id="flowMargin" min="1" step="0.01" value="1.20">
+        </div>
+        <div>
+          <label>Margem de AMT (ex.: 1,10 = +10%)</label>
+          <input type="number" id="headMargin" min="1" step="0.01" value="1.10">
+        </div>
+      </div>
+
+      <div class="sp-10"></div>
+
+      <div class="grid2">
+        <div>
+          <label>Tipo de bomba (filtro)</label>
+          <select id="typeFilter">
+            <option value="">(todas)</option>
+            <option value="solar_dc">Solar DC</option>
+            <option value="ac_inversor">AC + Inversor</option>
+            <option value="submersa">Submersa</option>
+            <option value="superficial">Superficial</option>
+          </select>
+        </div>
+        <div>
+          <label>Tensão (filtro)</label>
+          <select id="voltageFilter">
+            <option value="">(todas)</option>
+            <option value="12">12 V</option>
+            <option value="24">24 V</option>
+            <option value="48">48 V</option>
+            <option value="110">110 V</option>
+            <option value="220">220 V</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="sp-10"></div>
+
+      <div class="row">
+        <button class="btn" id="recalcRecommend" type="button">Atualizar recomendação</button>
+        <span class="pill">Meta: <b id="targetFlow">0</b> L/h @ <b id="targetHead">0</b> m</span>
+      </div>
+
+      <div class="sp-10"></div>
+
+      <div class="kpi">
+        <div class="box">
+          <div class="muted">Bomba recomendada</div>
+          <div class="val" id="bestPumpName">—</div>
+          <div class="small" id="bestPumpReason">—</div>
+        </div>
+        <div class="box">
+          <div class="muted">Placa solar sugerida (aprox.)</div>
+          <div class="val"><span id="pvWp">0</span> <span class="muted">Wp</span></div>
+          <div class="small">Estimativa: potência elétrica × 1,3 (folga)</div>
+        </div>
+      </div>
+
+      <div class="sp-10"></div>
+      <div id="recommendTable"></div>
+
+      <div class="sp-12"></div>
+
+      <details>
+        <summary class="muted">Ver/editar catálogo (JSON)</summary>
+        <div class="sp-10"></div>
+        <div class="muted">Cole um catálogo real (lista de objetos). O exemplo já vem carregado.</div>
+        <div class="sp-10"></div>
+        <textarea id="catalogJson"></textarea>
+        <div class="sp-10"></div>
+        <div class="row">
+          <button class="btn" id="loadCatalog" type="button">Carregar catálogo do JSON</button>
+          <button class="btn" id="resetCatalog" type="button">Restaurar catálogo de exemplo</button>
+        </div>
+      </details>
+
+      <div class="sp-12"></div>
+
+      <!-- ✅ Botão do PDF -->
+      <div class="row">
+        <button class="btn" id="btnPdf" type="button">Gerar Relatório (PDF)</button>
+      </div>
+
+      <div class="footer-note">
+        * Se não houver curva por pontos, o sistema assume curva linear aprox.: (0, Hmax) → (Qmax, 0).
+      </div>
+    </section>
+  </main>
+
+  <!-- Leaflet (JS) -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- jsPDF -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+  <!-- Seu JS -->
+  <script src="app.js"></script>
+</body>
+</html>
