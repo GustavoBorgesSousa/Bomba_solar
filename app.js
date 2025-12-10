@@ -18,7 +18,6 @@ let catalogoBombas = [
   { nome: "AC 1CV",        tipo: "AC",      tensao: "220V", potencia: 750, maxFlow: 4500, maxHead: 40 }
 ];
 
-// Guarda últimos resultados para PDF / resumo
 let lastResults = null;
 
 // ====================== HELPERS ======================
@@ -33,29 +32,20 @@ function arred(n, casas = 2) {
 
 // --------- NORMALIZAÇÃO DO CATÁLOGO (fallback de chaves) ---------
 function normalizeBomba(raw = {}) {
-  const nome =
-    raw.nome ?? raw.name ?? raw.model ?? raw.title ?? raw.bomba ?? raw.label ?? '';
+  const nome = raw.nome ?? raw.name ?? raw.model ?? raw.title ?? raw.bomba ?? raw.label ?? '';
+  const tipo = raw.tipo ?? raw.type ?? raw.category ?? raw.kind ?? '';
+  const tensao = raw.tensao ?? raw.voltage ?? raw.v ?? raw.tensão ?? '';
+  const potencia = raw.potencia ?? raw.potenciaW ?? raw.powerW ?? raw.power ?? raw.watt ?? raw.watts ?? null;
 
-  const tipo =
-    raw.tipo ?? raw.type ?? raw.category ?? raw.kind ?? '';
-
-  const tensao =
-    raw.tensao ?? raw.voltage ?? raw.v ?? raw.tensão ?? '';
-
-  const potencia =
-    raw.potencia ?? raw.potenciaW ?? raw.powerW ?? raw.power ?? raw.watt ?? raw.watts ?? null;
-
-  // Suporte a variações de nome para Q/H máximos
   const maxFlow =
-    raw.maxFlow ?? raw.qmax ?? raw.Qmax ?? raw.max_flow ?? raw.max_flow_lh ?? raw.flowMax ?? raw.maxVazao ?? raw.maxVazaoLh ?? null;
+    raw.maxFlow ?? raw.qmax ?? raw.Qmax ?? raw.max_flow ?? raw.max_flow_lh ?? raw.flowMax ??
+    raw.maxVazao ?? raw.maxVazaoLh ?? null;
 
   const maxHead =
-    raw.maxHead ?? raw.hmax ?? raw.Hmax ?? raw.max_head ?? raw.headMax ?? raw.maxAltura ?? raw.maxAlturaM ?? null;
+    raw.maxHead ?? raw.hmax ?? raw.Hmax ?? raw.max_head ?? raw.headMax ??
+    raw.maxAltura ?? raw.maxAlturaM ?? null;
 
-  const price =
-    raw.price ?? raw.preco ?? raw.valor ?? null;
-
-  // “curvePoints” opcional (se vocês usarem)
+  const price = raw.price ?? raw.preco ?? raw.valor ?? null;
   const curvePoints = raw.curvePoints ?? raw.curva ?? raw.pontosCurva ?? null;
 
   return {
@@ -74,7 +64,6 @@ function normalizeCatalogo(arr) {
   return arr
     .filter(Boolean)
     .map(normalizeBomba)
-    // mantém itens minimamente úteis (com capacidade numérica)
     .filter(b => Number.isFinite(b.maxFlow) && Number.isFinite(b.maxHead));
 }
 
@@ -148,23 +137,23 @@ document.addEventListener('DOMContentLoaded', () => {
   let map, markers = [];
 
   function initMap() {
-    map = L.map('map').setView([-15.94, -48.26], 5);
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19
-    }).addTo(map);
-
-    map.on('click', onMapClick);
+    try {
+      map = L.map('map').setView([-15.94, -48.26], 5);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+      map.on('click', onMapClick);
+    } catch (e) {
+      console.error('[MAPA] Falha ao iniciar Leaflet:', e);
+      alert('Falha ao iniciar o mapa. Verifique conexão ou bloqueio de recursos.');
+    }
   }
 
   function onMapClick(e) {
     if (markers.length >= 2) return;
-
     const marker = L.marker(e.latlng).addTo(map);
     markers.push(marker);
 
     if (markers.length === 2) {
-      const d = markers[0].getLatLng().distanceTo(markers[1].getLatLng()); // metros
+      const d = markers[0].getLatLng().distanceTo(markers[1].getLatLng());
       distanciaMapaInfoEl.textContent = arred(d, 1);
       distTubo.value = Math.round(d);
       recalcAll();
@@ -172,6 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function resetMapa() {
+    if (!map) return;
     markers.forEach(m => map.removeLayer(m));
     markers = [];
     distanciaMapaInfoEl.textContent = '0';
@@ -244,7 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const eficiencia = Math.min(1, Math.max(0.1, parseNumber(eficienciaEl.value, 0.6)));
       eficienciaEl.value = eficiencia;
 
-      const Q_m3s = vazaoLh / 3600000; // L/h -> m³/s
+      const Q_m3s = vazaoLh / 3600000;
       const rho = 1000;
       const g = 9.81;
 
@@ -271,7 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
       alert('Catálogo aplicado com sucesso!');
       recalcAll();
     } catch (e) {
-      console.error(e);
+      console.error('[CATÁLOGO] JSON inválido:', e);
       alert('JSON inválido. Verifique a sintaxe.');
     }
   }
@@ -295,7 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
         alert('Catálogo importado com sucesso!');
         recalcAll();
       } catch (e) {
-        console.error(e);
+        console.error('[CATÁLOGO] Erro ao importar:', e);
         alert('Erro ao ler o JSON. Verifique o arquivo.');
       }
     };
@@ -303,15 +293,20 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function exportarCatalogoArquivo() {
-    const blob = new Blob([JSON.stringify(catalogoBombas, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'catalogo_bombas.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      const blob = new Blob([JSON.stringify(catalogoBombas, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'catalogo_bombas.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('[CATÁLOGO] Erro ao exportar:', e);
+      alert('Não foi possível exportar o catálogo.');
+    }
   }
 
   function recomendarBombas(vazaoLh, amt) {
@@ -328,10 +323,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const filtroTensao = filtroTensaoEl.value.trim().toLowerCase();
 
     const bombasComScore = catalogoBombas.map((b0) => {
-      const b = normalizeBomba(b0); // garante canônico mesmo se vier “sujo”
+      const b = normalizeBomba(b0);
       const atendeTipo = !filtroTipo || b.tipo === filtroTipo;
       const atendeTensao = !filtroTensao || (b.tensao && String(b.tensao).toLowerCase().includes(filtroTensao));
-
       const atendeCapacidade = (b.maxFlow >= metaFlow) && (b.maxHead >= metaAmt);
 
       let score = Infinity;
@@ -351,7 +345,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const melhor = atendem[0] || null;
     const top5 = bombasComScore.slice(0, 5);
 
-    // Atualiza tabela
     tabelaBombasEl.innerHTML = '';
     top5.forEach((b, idx) => {
       const tr = document.createElement('tr');
@@ -373,11 +366,9 @@ document.addEventListener('DOMContentLoaded', () => {
       tabelaBombasEl.appendChild(tr);
     });
 
-    if (melhor) {
-      bombaRecomendadaEl.textContent = `${melhor.nome} (${melhor.tipo}, ${melhor.tensao})`;
-    } else {
-      bombaRecomendadaEl.textContent = 'Nenhuma bomba atende às metas atuais.';
-    }
+    bombaRecomendadaEl.textContent = melhor
+      ? `${melhor.nome} (${melhor.tipo}, ${melhor.tensao})`
+      : 'Nenhuma bomba atende às metas atuais.';
 
     return { metaFlow, metaAmt, melhor, top5 };
   }
@@ -399,7 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
     avisosEl.innerHTML = `<strong>Avisos:</strong><ul>${ul}</ul>`;
   }
 
-  // ---------- RESUMO / PDF / LOCALSTORAGE ----------
+  // ---------- RESUMO ----------
   function montarResumoTexto(res) {
     if (!res) {
       resumoTextoEl.textContent = 'Preencha os dados para gerar o resumo.';
@@ -427,11 +418,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     texto += `Meta com margens: ${arred(metaFlow, 2)} L/h @ ${arred(metaAmt, 2)} m\n`;
     texto += '\nBomba recomendada:\n';
-    if (melhor) {
-      texto += `- ${melhor.nome} (${melhor.tipo}, ${melhor.tensao}) - Potência: ${melhor.potencia ?? '-'} W\n`;
-    } else {
-      texto += '- Nenhuma bomba atende às metas atuais.\n';
-    }
+    texto += melhor
+      ? `- ${melhor.nome} (${melhor.tipo}, ${melhor.tensao}) - Potência: ${melhor.potencia ?? '-'} W\n`
+      : '- Nenhuma bomba atende às metas atuais.\n';
 
     if (top3 && top3.length) {
       texto += '\nTop 3 opções consideradas:\n';
@@ -443,45 +432,52 @@ document.addEventListener('DOMContentLoaded', () => {
     resumoTextoEl.textContent = texto;
   }
 
+  // ---------- SALVAR/CARREGAR ----------
   function salvarProjeto() {
-    const state = {
-      demanda: {
-        pessoas: parseNumber(pessoasQtd.value),
-        bovinos: parseNumber(bovinosQtd.value),
-        suinos: parseNumber(suinosQtd.value),
-        hortas: parseNumber(hortasQtd.value),
-        pastagem: parseNumber(pastagemQtd.value)
-      },
-      hidraulica: {
-        poco: parseNumber(pocoProf.value),
-        reservatorio: parseNumber(reservAlt.value),
-        distancia: parseNumber(distTubo.value)
-      },
-      horas: parseNumber(horasBomb.value),
-      eficiencia: parseNumber(eficienciaEl.value),
-      habilitarPotencia: habilitarPotenciaEl.checked,
-      margens: {
-        vazao: parseNumber(margemVazaoEl.value),
-        amt: parseNumber(margemAmtEl.value)
-      },
-      filtros: {
-        tipo: filtroTipoEl.value,
-        tensao: filtroTensaoEl.value
-      },
-      catalogo: catalogoBombas
-    };
+    try {
+      const state = {
+        demanda: {
+          pessoas: parseNumber(pessoasQtd.value),
+          bovinos: parseNumber(bovinosQtd.value),
+          suinos: parseNumber(suinosQtd.value),
+          hortas: parseNumber(hortasQtd.value),
+          pastagem: parseNumber(pastagemQtd.value)
+        },
+        hidraulica: {
+          poco: parseNumber(pocoProf.value),
+          reservatorio: parseNumber(reservAlt.value),
+          distancia: parseNumber(distTubo.value)
+        },
+        horas: parseNumber(horasBomb.value),
+        eficiencia: parseNumber(eficienciaEl.value),
+        habilitarPotencia: habilitarPotenciaEl.checked,
+        margens: {
+          vazao: parseNumber(margemVazaoEl.value),
+          amt: parseNumber(margemAmtEl.value)
+        },
+        filtros: {
+          tipo: filtroTipoEl.value,
+          tensao: filtroTensaoEl.value
+        },
+        catalogo: catalogoBombas
+      };
 
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
-    alert('Projeto salvo no navegador (localStorage).');
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
+      alert('Projeto salvo no navegador (localStorage).');
+    } catch (e) {
+      console.error('[LOCALSTORAGE] Erro ao salvar:', e);
+      alert('Não foi possível salvar o projeto (verifique permissões do navegador).');
+    }
   }
 
   function carregarProjeto() {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (!raw) {
-      alert('Nenhum projeto salvo encontrado.');
-      return;
-    }
     try {
+      const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (!raw) {
+        alert('Nenhum projeto salvo encontrado.');
+        return;
+      }
+
       const state = JSON.parse(raw);
 
       pessoasQtd.value = state.demanda?.pessoas ?? 0;
@@ -511,77 +507,93 @@ document.addEventListener('DOMContentLoaded', () => {
       recalcAll();
       alert('Projeto carregado com sucesso.');
     } catch (e) {
-      console.error(e);
+      console.error('[LOCALSTORAGE] Erro ao carregar:', e);
       alert('Erro ao carregar o projeto salvo.');
     }
   }
 
+  // ---------- PDF (COM TRATATIVAS) ----------
   function gerarPdf() {
-    if (!lastResults) {
-      alert('Calcule os resultados antes de gerar o PDF.');
-      return;
+    try {
+      if (!lastResults) {
+        alert('Calcule os resultados antes de gerar o PDF.');
+        return;
+      }
+
+      // ✅ Compatível com UMD: window.jspdf.jsPDF (mais comum) ou window.jsPDF (fallback)
+      const JsPDF = window.jspdf?.jsPDF || window.jsPDF;
+      if (!JsPDF) {
+        console.error('[PDF] jsPDF não carregou. window.jspdf:', window.jspdf);
+        alert(
+          'Não foi possível gerar o PDF porque a biblioteca jsPDF não carregou.\n\n' +
+          '✅ Verifique se a tag do jsPDF está correta no HTML (use jsDelivr) e faça um hard refresh (Ctrl+Shift+R).'
+        );
+        return;
+      }
+
+      const doc = new JsPDF();
+
+      const hoje = new Date();
+      const dataStr = hoje.toLocaleString('pt-BR');
+
+      doc.setFontSize(14);
+      doc.text('Universidade Estadual de Goiás - UEG', 10, 15);
+      doc.setFontSize(12);
+      doc.text('Gerência de Projeto de Software', 10, 22);
+      doc.text('Relatório de Dimensionamento de Bombeamento Solar', 10, 29);
+      doc.setFontSize(10);
+      doc.text(`Data/Hora: ${dataStr}`, 10, 36);
+
+      let y = 44;
+      doc.setFontSize(11);
+      doc.text('1. Entradas do Sistema', 10, y); y += 6;
+
+      doc.setFontSize(9);
+      doc.text(`Demanda total: ${arred(lastResults.totalDia, 2)} L/dia (${arred(lastResults.totalDia / 1000, 3)} m³/dia)`, 10, y); y += 5;
+      doc.text(`Profundidade do poço: ${arred(parseNumber(pocoProf.value), 2)} m`, 10, y); y += 5;
+      doc.text(`Altura do reservatório: ${arred(parseNumber(reservAlt.value), 2)} m`, 10, y); y += 5;
+      doc.text(`Distância da tubulação: ${arred(lastResults.dist, 2)} m (${arred(lastResults.dist / 1000, 3)} km)`, 10, y); y += 5;
+      doc.text(`Horas de bombeamento: ${arred(lastResults.horas, 2)} h/dia`, 10, y); y += 5;
+      doc.text(`Margem vazão: ${arred(parseNumber(margemVazaoEl.value), 2)}`, 10, y); y += 5;
+      doc.text(`Margem AMT: ${arred(parseNumber(margemAmtEl.value), 2)}`, 10, y); y += 7;
+
+      doc.setFontSize(11);
+      doc.text('2. Resultados de Cálculo', 10, y); y += 6;
+      doc.setFontSize(9);
+      doc.text(`Perdas de carga (10%): ${arred(lastResults.perdas, 2)} m`, 10, y); y += 5;
+      doc.text(`AMT total: ${arred(lastResults.amt, 2)} m`, 10, y); y += 5;
+      doc.text(`Vazão necessária: ${arred(lastResults.vazaoLh, 2)} L/h (${arred(lastResults.vazaoLmin, 2)} L/min)`, 10, y); y += 5;
+      doc.text(`Vazão em m³: ${arred(lastResults.vazaoM3h, 3)} m³/h (${arred(lastResults.vazaoM3dia, 3)} m³/dia)`, 10, y); y += 5;
+      doc.text(`Meta com margens: ${arred(lastResults.metaFlow, 2)} L/h @ ${arred(lastResults.metaAmt, 2)} m`, 10, y); y += 7;
+
+      doc.setFontSize(11);
+      doc.text('3. Recomendação de Bomba', 10, y); y += 6;
+      doc.setFontSize(9);
+
+      if (lastResults.melhor) {
+        doc.text(
+          `Recomendada: ${lastResults.melhor.nome} (${lastResults.melhor.tipo}, ${lastResults.melhor.tensao}) - Potência: ${lastResults.melhor.potencia ?? '-'} W`,
+          10, y
+        );
+        y += 6;
+      } else {
+        doc.text('Nenhuma bomba atende às metas atuais.', 10, y); y += 6;
+      }
+
+      doc.text('Top 5 bombas avaliadas:', 10, y); y += 5;
+      lastResults.top5.forEach((b, idx) => {
+        if (y > 280) { doc.addPage(); y = 20; }
+        const status = b.atende ? 'Atende meta' : 'Não atende';
+        const linha = `${idx + 1}. ${b.nome} (${b.tipo}, ${b.tensao}) - Qmax:${b.maxFlow} L/h, Hmax:${b.maxHead} m - ${status}`;
+        doc.text(linha, 10, y);
+        y += 5;
+      });
+
+      doc.save('relatorio_bombeamento_solar.pdf');
+    } catch (e) {
+      console.error('[PDF] Erro inesperado ao gerar PDF:', e);
+      alert('Ocorreu um erro ao gerar o PDF. Veja o console para detalhes.');
     }
-
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-
-    const hoje = new Date();
-    const dataStr = hoje.toLocaleString('pt-BR');
-
-    doc.setFontSize(14);
-    doc.text('Universidade Estadual de Goiás - UEG', 10, 15);
-    doc.setFontSize(12);
-    doc.text('Gerência de Projeto de Software', 10, 22);
-    doc.text('Relatório de Dimensionamento de Bombeamento Solar', 10, 29);
-    doc.setFontSize(10);
-    doc.text(`Data/Hora: ${dataStr}`, 10, 36);
-
-    let y = 44;
-    doc.setFontSize(11);
-    doc.text('1. Entradas do Sistema', 10, y); y += 6;
-
-    doc.setFontSize(9);
-    doc.text(`Demanda total: ${arred(lastResults.totalDia, 2)} L/dia (${arred(lastResults.totalDia / 1000, 3)} m³/dia)`, 10, y); y += 5;
-    doc.text(`Profundidade do poço: ${arred(parseNumber(pocoProf.value), 2)} m`, 10, y); y += 5;
-    doc.text(`Altura do reservatório: ${arred(parseNumber(reservAlt.value), 2)} m`, 10, y); y += 5;
-    doc.text(`Distância da tubulação: ${arred(lastResults.dist, 2)} m (${arred(lastResults.dist / 1000, 3)} km)`, 10, y); y += 5;
-    doc.text(`Horas de bombeamento: ${arred(lastResults.horas, 2)} h/dia`, 10, y); y += 5;
-    doc.text(`Margem vazão: ${arred(parseNumber(margemVazaoEl.value), 2)}`, 10, y); y += 5;
-    doc.text(`Margem AMT: ${arred(parseNumber(margemAmtEl.value), 2)}`, 10, y); y += 7;
-
-    doc.setFontSize(11);
-    doc.text('2. Resultados de Cálculo', 10, y); y += 6;
-    doc.setFontSize(9);
-    doc.text(`Perdas de carga (10%): ${arred(lastResults.perdas, 2)} m`, 10, y); y += 5;
-    doc.text(`AMT total: ${arred(lastResults.amt, 2)} m`, 10, y); y += 5;
-    doc.text(`Vazão necessária: ${arred(lastResults.vazaoLh, 2)} L/h (${arred(lastResults.vazaoLmin, 2)} L/min)`, 10, y); y += 5;
-    doc.text(`Vazão em m³: ${arred(lastResults.vazaoM3h, 3)} m³/h (${arred(lastResults.vazaoM3dia, 3)} m³/dia)`, 10, y); y += 5;
-    doc.text(`Meta com margens: ${arred(lastResults.metaFlow, 2)} L/h @ ${arred(lastResults.metaAmt, 2)} m`, 10, y); y += 7;
-
-    doc.setFontSize(11);
-    doc.text('3. Recomendação de Bomba', 10, y); y += 6;
-    doc.setFontSize(9);
-
-    if (lastResults.melhor) {
-      doc.text(
-        `Recomendada: ${lastResults.melhor.nome} (${lastResults.melhor.tipo}, ${lastResults.melhor.tensao}) - Potência: ${lastResults.melhor.potencia ?? '-'} W`,
-        10, y
-      );
-      y += 6;
-    } else {
-      doc.text('Nenhuma bomba atende às metas atuais.', 10, y); y += 6;
-    }
-
-    doc.text('Top 5 bombas avaliadas:', 10, y); y += 5;
-    lastResults.top5.forEach((b, idx) => {
-      if (y > 280) { doc.addPage(); y = 20; }
-      const status = b.atende ? 'Atende meta' : 'Não atende';
-      const linha = `${idx + 1}. ${b.nome} (${b.tipo}, ${b.tensao}) - Qmax:${b.maxFlow} L/h, Hmax:${b.maxHead} m - ${status}`;
-      doc.text(linha, 10, y);
-      y += 5;
-    });
-
-    doc.save('relatorio_bombeamento_solar.pdf');
   }
 
   function copiarResumoClipboard() {
@@ -603,21 +615,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---------- RE-CÁLCULO GERAL ----------
   function recalcAll() {
-    const totalDia = calcularDemandaTotal();
-    const { amt, perdas, dist } = calcularAMT();
-    const { vazaoLh, vazaoLmin, vazaoM3h, vazaoM3dia, horas, avisos } = calcularVazaoEPotencia(totalDia, amt);
-    const { metaFlow, metaAmt, melhor, top5 } = recomendarBombas(vazaoLh, amt);
+    try {
+      const totalDia = calcularDemandaTotal();
+      const { amt, perdas, dist } = calcularAMT();
+      const { vazaoLh, vazaoLmin, vazaoM3h, vazaoM3dia, horas, avisos } = calcularVazaoEPotencia(totalDia, amt);
+      const { metaFlow, metaAmt, melhor, top5 } = recomendarBombas(vazaoLh, amt);
 
-    atualizarAvisos(amt, avisos);
+      atualizarAvisos(amt, avisos);
 
-    lastResults = {
-      totalDia, amt, perdas, dist,
-      vazaoLh, vazaoLmin, vazaoM3h, vazaoM3dia, horas,
-      metaFlow, metaAmt, melhor, top5,
-      top3: top5.slice(0, 3)
-    };
+      lastResults = {
+        totalDia, amt, perdas, dist,
+        vazaoLh, vazaoLmin, vazaoM3h, vazaoM3dia, horas,
+        metaFlow, metaAmt, melhor, top5,
+        top3: top5.slice(0, 3)
+      };
 
-    montarResumoTexto(lastResults);
+      montarResumoTexto(lastResults);
+    } catch (e) {
+      console.error('[CALC] Erro no recálculo:', e);
+      alert('Ocorreu um erro nos cálculos. Veja o console.');
+    }
   }
 
   // ---------- EVENTOS ----------
@@ -638,7 +655,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   btnSalvarProjeto.addEventListener('click', salvarProjeto);
   btnCarregarProjeto.addEventListener('click', carregarProjeto);
-  btnGerarPdf.addEventListener('click', gerarPdf);
+
+  // ✅ proteção extra: se botão não existir ou não pegou o id, loga
+  if (btnGerarPdf) {
+    btnGerarPdf.addEventListener('click', gerarPdf);
+  } else {
+    console.warn('[PDF] Botão btnGerarPdf não encontrado no HTML.');
+  }
+
   btnCopiarResumo.addEventListener('click', copiarResumoClipboard);
 
   btnResetMapa.addEventListener('click', () => {
