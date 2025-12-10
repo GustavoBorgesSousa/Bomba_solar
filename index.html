@@ -5,9 +5,8 @@
   <title>Sistema de Bombeamento Solar</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="styles.css">
-
-
   <link rel="icon" href="icon.ico" type="image/x-icon">
+
   <!-- Leaflet (mapa) -->
   <link
     rel="stylesheet"
@@ -16,6 +15,7 @@
     crossorigin=""
   />
 </head>
+
 <body>
 <header>
   <h1>Sistema de Bombeamento com Energia Solar</h1>
@@ -216,9 +216,7 @@
           <th>Status</th>
         </tr>
         </thead>
-        <tbody id="tabelaBombas">
-        <!-- Preenchido via JS -->
-        </tbody>
+        <tbody id="tabelaBombas"></tbody>
       </table>
     </div>
   </section>
@@ -242,21 +240,17 @@
   <small>Projeto acadêmico - Bombeamento com energia solar.</small>
 </footer>
 
-<!-- Scripts -->
+<!-- Leaflet -->
 <script
   src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
   integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
   crossorigin=""
 ></script>
 
-<!-- jsPDF para gerar PDF -->
-<script
-  src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
-  integrity="sha512-/1qK7T2K7Vdc+GqORdzdrIW6DCeA44y7NysGEKMluSleqU9jwELyhlHLLJoCq114F8C5Z4HzyBbs6k8UHEbS7w=="
-  crossorigin="anonymous"
-  referrerpolicy="no-referrer"
-></script>
+<!-- jsPDF (USAR jsDelivr - sem integrity pra não bloquear) -->
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
-<script src="app.js"></script>
+<!-- Seu JS (cache-bust pra GitHub Pages atualizar) -->
+<script src="app.js?v=12"></script>
 </body>
 </html>
