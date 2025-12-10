@@ -1,5 +1,3 @@
-'use strict';
-
 // ====================== CONSTANTES BÁSICAS ======================
 const consumoPorUnidade = {
   pessoas: 84,
@@ -33,11 +31,6 @@ function arred(n, casas = 2) {
   return Number.isFinite(n) ? n.toFixed(casas) : '0';
 }
 
-function showAlert(msg) {
-  alert(msg);
-  console.warn(msg);
-}
-
 // --------- NORMALIZAÇÃO DO CATÁLOGO (fallback de chaves) ---------
 function normalizeBomba(raw = {}) {
   const nome =
@@ -52,21 +45,16 @@ function normalizeBomba(raw = {}) {
   const potencia =
     raw.potencia ?? raw.potenciaW ?? raw.powerW ?? raw.power ?? raw.watt ?? raw.watts ?? null;
 
-  // Suporte a variações de nome para Q/H máximos
   const maxFlow =
-    raw.maxFlow ?? raw.qmax ?? raw.Qmax ?? raw.max_flow ?? raw.max_flow_lh ?? raw.flowMax ??
-    raw.maxVazao ?? raw.maxVazaoLh ?? null;
+    raw.maxFlow ?? raw.qmax ?? raw.Qmax ?? raw.max_flow ?? raw.max_flow_lh ?? raw.flowMax ?? raw.maxVazao ?? raw.maxVazaoLh ?? null;
 
   const maxHead =
-    raw.maxHead ?? raw.hmax ?? raw.Hmax ?? raw.max_head ?? raw.headMax ??
-    raw.maxAltura ?? raw.maxAlturaM ?? null;
+    raw.maxHead ?? raw.hmax ?? raw.Hmax ?? raw.max_head ?? raw.headMax ?? raw.maxAltura ?? raw.maxAlturaM ?? null;
 
   const price =
     raw.price ?? raw.preco ?? raw.valor ?? null;
 
-  // “curvePoints” opcional (se vocês usarem)
-  const curvePoints =
-    raw.curvePoints ?? raw.curva ?? raw.pontosCurva ?? null;
+  const curvePoints = raw.curvePoints ?? raw.curva ?? raw.pontosCurva ?? null;
 
   return {
     nome: String(nome || '').trim() || '-',
@@ -81,184 +69,96 @@ function normalizeBomba(raw = {}) {
 }
 
 function normalizeCatalogo(arr) {
-  return (Array.isArray(arr) ? arr : [])
+  return arr
     .filter(Boolean)
     .map(normalizeBomba)
     .filter(b => Number.isFinite(b.maxFlow) && Number.isFinite(b.maxHead));
 }
 
-// ====================== jsPDF LOADER + IMG LOADER ======================
-function getJsPDF() {
-  return (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : null;
-}
-
-// Carrega jsPDF automaticamente (caso o SRI esteja bloqueando no HTML)
-function ensureJsPdfLoaded() {
-  return new Promise((resolve) => {
-    if (getJsPDF()) return resolve(true);
-
-    // Evita duplicar
-    if (document.querySelector('script[data-autoload="jspdf"]')) {
-      // espera um pouco e resolve
-      const t0 = Date.now();
-      const timer = setInterval(() => {
-        if (getJsPDF()) {
-          clearInterval(timer);
-          resolve(true);
-        } else if (Date.now() - t0 > 4000) {
-          clearInterval(timer);
-          resolve(false);
-        }
-      }, 100);
-      return;
-    }
-
-    const s = document.createElement('script');
-    s.dataset.autoload = 'jspdf';
-
-    // Fonte alternativa (sem integrity) — evita erro de hash/SRI
-    // (Se uma falhar, você pode trocar por outra CDN)
-    s.src = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js';
-    s.async = true;
-
-    s.onload = () => resolve(!!getJsPDF());
-    s.onerror = () => resolve(false);
-
-    document.head.appendChild(s);
-  });
-}
-
-// Carrega imagem local e devolve DataURL (para addImage no PDF)
-async function loadImageAsDataURL(src) {
-  try {
-    const res = await fetch(src, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const blob = await res.blob();
-    return await new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(r.result);
-      r.onerror = reject;
-      r.readAsDataURL(blob);
-    });
-  } catch (e) {
-    console.warn('Falha ao carregar imagem:', src, e);
-    return null;
-  }
-}
-
 // ====================== DOM READY ======================
 document.addEventListener('DOMContentLoaded', () => {
-  // ========= Pegadores seguros =========
-  const $ = (id) => document.getElementById(id);
-
   // Inputs de demanda
-  const pessoasQtd = $('pessoasQtd');
-  const bovinosQtd = $('bovinosQtd');
-  const suinosQtd  = $('suinosQtd');
-  const hortasQtd  = $('hortasQtd');
-  const pastagemQtd = $('pastagemQtd');
+  const pessoasQtd = document.getElementById('pessoasQtd');
+  const bovinosQtd = document.getElementById('bovinosQtd');
+  const suinosQtd = document.getElementById('suinosQtd');
+  const hortasQtd = document.getElementById('hortasQtd');
+  const pastagemQtd = document.getElementById('pastagemQtd');
 
   // Saídas demanda
-  const totalLitrosDiaEl = $('totalLitrosDia');
-  const totalM3DiaEl     = $('totalM3Dia');
+  const totalLitrosDiaEl = document.getElementById('totalLitrosDia');
+  const totalM3DiaEl = document.getElementById('totalM3Dia');
 
   // Inputs hidráulica
-  const pocoProf  = $('pocoProfundidade');
-  const reservAlt = $('reservatorioAltura');
-  const distTubo  = $('distanciaTubulacao');
+  const pocoProf = document.getElementById('pocoProfundidade');
+  const reservAlt = document.getElementById('reservatorioAltura');
+  const distTubo = document.getElementById('distanciaTubulacao');
 
   // Saídas hidráulica
-  const distKmEl = $('distanciaKm');
-  const perdasEl = $('perdasCarga');
-  const amtEl    = $('amtResultado');
-  const avisosEl = $('avisos');
+  const distKmEl = document.getElementById('distanciaKm');
+  const perdasEl = document.getElementById('perdasCarga');
+  const amtEl = document.getElementById('amtResultado');
+  const avisosEl = document.getElementById('avisos');
 
   // Vazão / potência
-  const horasBomb           = $('horasBombeamento');
-  const eficienciaEl        = $('eficienciaBomba');
-  const habilitarPotenciaEl = $('habilitarPotencia');
+  const horasBomb = document.getElementById('horasBombeamento');
+  const eficienciaEl = document.getElementById('eficienciaBomba');
+  const habilitarPotenciaEl = document.getElementById('habilitarPotencia');
 
-  const vazaoLhEl   = $('vazaoLh');
-  const vazaoLminEl = $('vazaoLmin');
-  const vazaoM3hEl  = $('vazaoM3h');
-  const vazaoM3diaEl = $('vazaoM3dia');
-  const potHidEl    = $('potenciaHidraulica');
-  const potElecEl   = $('potenciaEletrica');
+  const vazaoLhEl = document.getElementById('vazaoLh');
+  const vazaoLminEl = document.getElementById('vazaoLmin');
+  const vazaoM3hEl = document.getElementById('vazaoM3h');
+  const vazaoM3diaEl = document.getElementById('vazaoM3dia');
+  const potHidEl = document.getElementById('potenciaHidraulica');
+  const potElecEl = document.getElementById('potenciaEletrica');
 
   // Catálogo / filtros
-  const margemVazaoEl = $('margemVazao');
-  const margemAmtEl   = $('margemAMT');
-  const filtroTipoEl  = $('filtroTipo');
-  const filtroTensaoEl = $('filtroTensao');
-  const catalogoJsonEl = $('catalogoJson');
-  const tabelaBombasEl = $('tabelaBombas');
-  const bombaRecomendadaEl = $('bombaRecomendada');
+  const margemVazaoEl = document.getElementById('margemVazao');
+  const margemAmtEl = document.getElementById('margemAMT');
+  const filtroTipoEl = document.getElementById('filtroTipo');
+  const filtroTensaoEl = document.getElementById('filtroTensao');
+  const catalogoJsonEl = document.getElementById('catalogoJson');
+  const tabelaBombasEl = document.getElementById('tabelaBombas');
+  const bombaRecomendadaEl = document.getElementById('bombaRecomendada');
 
   // Botões catálogo
-  const fileCatalogoEl     = $('fileCatalogo');
-  const btnImportCatalogo  = $('btnImportCatalogo');
-  const btnExportCatalogo  = $('btnExportCatalogo');
-  const btnAplicarCatalogo = $('btnAplicarCatalogo');
+  const fileCatalogoEl = document.getElementById('fileCatalogo');
+  const btnImportCatalogo = document.getElementById('btnImportCatalogo');
+  const btnExportCatalogo = document.getElementById('btnExportCatalogo');
+  const btnAplicarCatalogo = document.getElementById('btnAplicarCatalogo');
 
   // Resumo / projeto / PDF
-  const resumoTextoEl      = $('resumoTexto');
-  const btnSalvarProjeto   = $('btnSalvarProjeto');
-  const btnCarregarProjeto = $('btnCarregarProjeto');
-  const btnGerarPdf        = $('btnGerarPdf');
-  const btnCopiarResumo    = $('btnCopiarResumo');
+  const resumoTextoEl = document.getElementById('resumoTexto');
+  const btnSalvarProjeto = document.getElementById('btnSalvarProjeto');
+  const btnCarregarProjeto = document.getElementById('btnCarregarProjeto');
+  const btnGerarPdf = document.getElementById('btnGerarPdf');
+  const btnCopiarResumo = document.getElementById('btnCopiarResumo');
+
+  // ✅ NOVO: importar projeto por arquivo
+  const fileProjetoEl = document.getElementById('fileProjeto');
+  const btnImportProjeto = document.getElementById('btnImportProjeto');
 
   // Mapa
-  const distanciaMapaInfoEl = $('distanciaMapaInfo');
-  const btnResetMapa        = $('btnResetMapa');
-
-  // ========= Validação mínima de elementos essenciais =========
-  const essenciais = [
-    pessoasQtd, bovinosQtd, suinosQtd, hortasQtd, pastagemQtd,
-    totalLitrosDiaEl, totalM3DiaEl,
-    pocoProf, reservAlt, distTubo,
-    distKmEl, perdasEl, amtEl, avisosEl,
-    horasBomb, eficienciaEl, habilitarPotenciaEl,
-    vazaoLhEl, vazaoLminEl, vazaoM3hEl, vazaoM3diaEl, potHidEl, potElecEl,
-    margemVazaoEl, margemAmtEl, filtroTipoEl, filtroTensaoEl,
-    catalogoJsonEl, tabelaBombasEl, bombaRecomendadaEl,
-    fileCatalogoEl, btnImportCatalogo, btnExportCatalogo, btnAplicarCatalogo,
-    resumoTextoEl, btnSalvarProjeto, btnCarregarProjeto, btnGerarPdf, btnCopiarResumo,
-    distanciaMapaInfoEl, btnResetMapa
-  ];
-
-  if (essenciais.some(x => !x)) {
-    showAlert('Erro: faltam elementos no HTML (IDs não encontrados). Confira se o index.html está igual ao esperado.');
-    return;
-  }
+  const distanciaMapaInfoEl = document.getElementById('distanciaMapaInfo');
+  const btnResetMapa = document.getElementById('btnResetMapa');
 
   // Normaliza catálogo inicial e preenche textarea
   catalogoBombas = normalizeCatalogo(catalogoBombas);
   catalogoJsonEl.value = JSON.stringify(catalogoBombas, null, 2);
 
   // ---------- MAPA ----------
-  let map = null, markers = [];
+  let map, markers = [];
 
   function initMap() {
-    if (!window.L) {
-      showAlert('Leaflet não carregou. O mapa ficará indisponível, mas o sistema continua funcionando.');
-      return;
-    }
-    try {
-      map = L.map('map').setView([-15.94, -48.26], 5);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19
-      }).addTo(map);
+    map = L.map('map').setView([-15.94, -48.26], 5);
 
-      map.on('click', onMapClick);
-    } catch (e) {
-      console.error(e);
-      showAlert('Erro ao iniciar o mapa. Verifique o container #map e conexão.');
-      map = null;
-    }
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
+
+    map.on('click', onMapClick);
   }
 
   function onMapClick(e) {
-    if (!map) return;
     if (markers.length >= 2) return;
 
     const marker = L.marker(e.latlng).addTo(map);
@@ -273,7 +173,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function resetMapa() {
-    if (!map) return;
     markers.forEach(m => map.removeLayer(m));
     markers = [];
     distanciaMapaInfoEl.textContent = '0';
@@ -281,24 +180,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---------- CÁLCULOS PRINCIPAIS ----------
   function calcularDemandaTotal() {
-    const qtdPessoas = Math.max(0, parseNumber(pessoasQtd.value));
-    const qtdBovinos = Math.max(0, parseNumber(bovinosQtd.value));
-    const qtdSuinos  = Math.max(0, parseNumber(suinosQtd.value));
-    const qtdHortas  = Math.max(0, parseNumber(hortasQtd.value));
-    const qtdPastagem = Math.max(0, parseNumber(pastagemQtd.value));
-
-    // força campos a ficarem >= 0 (UX)
-    pessoasQtd.value = qtdPessoas;
-    bovinosQtd.value = qtdBovinos;
-    suinosQtd.value  = qtdSuinos;
-    hortasQtd.value  = qtdHortas;
-    pastagemQtd.value = qtdPastagem;
+    const qtdPessoas = parseNumber(pessoasQtd.value);
+    const qtdBovinos = parseNumber(bovinosQtd.value);
+    const qtdSuinos = parseNumber(suinosQtd.value);
+    const qtdHortas = parseNumber(hortasQtd.value);
+    const qtdPastagem = parseNumber(pastagemQtd.value);
 
     const total =
       qtdPessoas * consumoPorUnidade.pessoas +
       qtdBovinos * consumoPorUnidade.bovinos +
-      qtdSuinos  * consumoPorUnidade.suinos +
-      qtdHortas  * consumoPorUnidade.hortas +
+      qtdSuinos * consumoPorUnidade.suinos +
+      qtdHortas * consumoPorUnidade.hortas +
       qtdPastagem * consumoPorUnidade.pastagem;
 
     totalLitrosDiaEl.textContent = arred(total, 2);
@@ -308,9 +200,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function calcularAMT() {
-    let hSuc  = Math.max(0, parseNumber(pocoProf.value));
+    let hSuc = Math.max(0, parseNumber(pocoProf.value));
     let hElev = Math.max(0, parseNumber(reservAlt.value));
-    let dist  = Math.max(0, parseNumber(distTubo.value));
+    let dist = Math.max(0, parseNumber(distTubo.value));
 
     pocoProf.value = hSuc;
     reservAlt.value = hElev;
@@ -336,9 +228,9 @@ document.addEventListener('DOMContentLoaded', () => {
       avisos.push('Horas de bombeamento ajustadas para mínimo de 0,5 h/dia por segurança.');
     }
 
-    const vazaoLh   = horas > 0 ? totalDia / horas : 0;
+    const vazaoLh = horas > 0 ? totalDia / horas : 0;
     const vazaoLmin = vazaoLh / 60;
-    const vazaoM3h  = vazaoLh / 1000;
+    const vazaoM3h = vazaoLh / 1000;
     const vazaoM3dia = totalDia / 1000;
 
     vazaoLhEl.textContent = arred(vazaoLh, 2);
@@ -372,26 +264,23 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const data = JSON.parse(catalogoJsonEl.value);
       if (!Array.isArray(data)) {
-        showAlert('O JSON do catálogo deve ser um array de bombas.');
+        alert('O JSON do catálogo deve ser um array de bombas.');
         return;
       }
       catalogoBombas = normalizeCatalogo(data);
-      if (!catalogoBombas.length) {
-        showAlert('Catálogo aplicado, mas nenhuma bomba válida foi encontrada (verifique maxFlow/maxHead).');
-      }
       catalogoJsonEl.value = JSON.stringify(catalogoBombas, null, 2);
       alert('Catálogo aplicado com sucesso!');
       recalcAll();
     } catch (e) {
       console.error(e);
-      showAlert('JSON inválido. Verifique a sintaxe.');
+      alert('JSON inválido. Verifique a sintaxe.');
     }
   }
 
   function importarCatalogoArquivo() {
     const file = fileCatalogoEl.files[0];
     if (!file) {
-      showAlert('Selecione um arquivo JSON primeiro.');
+      alert('Selecione um arquivo JSON primeiro.');
       return;
     }
     const reader = new FileReader();
@@ -399,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const data = JSON.parse(ev.target.result);
         if (!Array.isArray(data)) {
-          showAlert('O JSON do catálogo deve ser um array de bombas.');
+          alert('O JSON do catálogo deve ser um array de bombas.');
           return;
         }
         catalogoBombas = normalizeCatalogo(data);
@@ -408,27 +297,22 @@ document.addEventListener('DOMContentLoaded', () => {
         recalcAll();
       } catch (e) {
         console.error(e);
-        showAlert('Erro ao ler o JSON. Verifique o arquivo.');
+        alert('Erro ao ler o JSON. Verifique o arquivo.');
       }
     };
     reader.readAsText(file, 'utf-8');
   }
 
   function exportarCatalogoArquivo() {
-    try {
-      const blob = new Blob([JSON.stringify(catalogoBombas, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'catalogo_bombas.json';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error(e);
-      showAlert('Falha ao exportar o catálogo. Tente novamente.');
-    }
+    const blob = new Blob([JSON.stringify(catalogoBombas, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'catalogo_bombas.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   function recomendarBombas(vazaoLh, amt) {
@@ -468,7 +352,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const melhor = atendem[0] || null;
     const top5 = bombasComScore.slice(0, 5);
 
-    // Atualiza tabela
     tabelaBombasEl.innerHTML = '';
     top5.forEach((b, idx) => {
       const tr = document.createElement('tr');
@@ -490,9 +373,11 @@ document.addEventListener('DOMContentLoaded', () => {
       tabelaBombasEl.appendChild(tr);
     });
 
-    bombaRecomendadaEl.textContent = melhor
-      ? `${melhor.nome} (${melhor.tipo}, ${melhor.tensao})`
-      : 'Nenhuma bomba atende às metas atuais.';
+    if (melhor) {
+      bombaRecomendadaEl.textContent = `${melhor.nome} (${melhor.tipo}, ${melhor.tensao})`;
+    } else {
+      bombaRecomendadaEl.textContent = 'Nenhuma bomba atende às metas atuais.';
+    }
 
     return { metaFlow, metaAmt, melhor, top5 };
   }
@@ -559,46 +444,41 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function salvarProjeto() {
-    try {
-      const state = {
-        demanda: {
-          pessoas: parseNumber(pessoasQtd.value),
-          bovinos: parseNumber(bovinosQtd.value),
-          suinos: parseNumber(suinosQtd.value),
-          hortas: parseNumber(hortasQtd.value),
-          pastagem: parseNumber(pastagemQtd.value)
-        },
-        hidraulica: {
-          poco: parseNumber(pocoProf.value),
-          reservatorio: parseNumber(reservAlt.value),
-          distancia: parseNumber(distTubo.value)
-        },
-        horas: parseNumber(horasBomb.value),
-        eficiencia: parseNumber(eficienciaEl.value),
-        habilitarPotencia: habilitarPotenciaEl.checked,
-        margens: {
-          vazao: parseNumber(margemVazaoEl.value),
-          amt: parseNumber(margemAmtEl.value)
-        },
-        filtros: {
-          tipo: filtroTipoEl.value,
-          tensao: filtroTensaoEl.value
-        },
-        catalogo: catalogoBombas
-      };
+    const state = {
+      demanda: {
+        pessoas: parseNumber(pessoasQtd.value),
+        bovinos: parseNumber(bovinosQtd.value),
+        suinos: parseNumber(suinosQtd.value),
+        hortas: parseNumber(hortasQtd.value),
+        pastagem: parseNumber(pastagemQtd.value)
+      },
+      hidraulica: {
+        poco: parseNumber(pocoProf.value),
+        reservatorio: parseNumber(reservAlt.value),
+        distancia: parseNumber(distTubo.value)
+      },
+      horas: parseNumber(horasBomb.value),
+      eficiencia: parseNumber(eficienciaEl.value),
+      habilitarPotencia: habilitarPotenciaEl.checked,
+      margens: {
+        vazao: parseNumber(margemVazaoEl.value),
+        amt: parseNumber(margemAmtEl.value)
+      },
+      filtros: {
+        tipo: filtroTipoEl.value,
+        tensao: filtroTensaoEl.value
+      },
+      catalogo: catalogoBombas
+    };
 
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
-      alert('Projeto salvo no navegador (localStorage).');
-    } catch (e) {
-      console.error(e);
-      showAlert('Não foi possível salvar (storage cheio ou bloqueado).');
-    }
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
+    alert('Projeto salvo no navegador (localStorage).');
   }
 
   function carregarProjeto() {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (!raw) {
-      showAlert('Nenhum projeto salvo encontrado.');
+      alert('Nenhum projeto salvo encontrado.');
       return;
     }
     try {
@@ -632,161 +512,151 @@ document.addEventListener('DOMContentLoaded', () => {
       alert('Projeto carregado com sucesso.');
     } catch (e) {
       console.error(e);
-      showAlert('Erro ao carregar o projeto salvo.');
+      alert('Erro ao carregar o projeto salvo.');
     }
   }
 
-  // ======= PDF (COM TRATATIVAS + AUTOLOAD jsPDF + LOGO) =======
-  async function gerarPdf() {
+  // ✅ NOVO: importar projeto por arquivo (.json)
+  function importarProjetoArquivo() {
+    const file = fileProjetoEl?.files?.[0];
+    if (!file) {
+      alert('Selecione um arquivo .json do projeto primeiro.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const texto = String(ev.target.result || '').trim();
+        if (!texto) {
+          alert('Arquivo vazio. Selecione um .json válido.');
+          return;
+        }
+
+        let state = JSON.parse(texto);
+
+        // Se alguém salvou como "string JSON" dentro do JSON (raro), tenta normalizar
+        if (typeof state === 'string') state = JSON.parse(state);
+
+        // Validação mínima (robusta)
+        if (!state || typeof state !== 'object') {
+          alert('Arquivo não parece ser um projeto válido.');
+          return;
+        }
+
+        // Salva exatamente na mesma chave do sistema
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
+
+        // Usa a função existente para preencher tudo
+        carregarProjeto();
+
+        alert('Projeto importado e carregado com sucesso!');
+      } catch (e) {
+        console.error(e);
+        alert('Não foi possível importar: JSON inválido ou formato inesperado.');
+      }
+    };
+
+    reader.onerror = () => {
+      alert('Erro ao ler o arquivo. Tente novamente.');
+    };
+
+    reader.readAsText(file, 'utf-8');
+  }
+
+  function gerarPdf() {
+    if (!lastResults) {
+      alert('Calcule os resultados antes de gerar o PDF.');
+      return;
+    }
+
+    // ✅ Tratativa: jsPDF não carregou (evita “clicar e não acontecer nada”)
+    const jsPDF = window.jspdf?.jsPDF;
+    if (!jsPDF) {
+      alert('A biblioteca jsPDF não carregou. Verifique sua conexão e o script do jsPDF no index.html.');
+      return;
+    }
+
     try {
-      if (!lastResults) {
-        showAlert('Calcule os resultados antes de gerar o PDF.');
-        return;
-      }
-
-      // UX: desabilita enquanto gera
-      const oldText = btnGerarPdf.textContent;
-      btnGerarPdf.disabled = true;
-      btnGerarPdf.textContent = 'Gerando PDF...';
-
-      // garante jsPDF
-      const ok = await ensureJsPdfLoaded();
-      const JsPDF = getJsPDF();
-
-      if (!ok || !JsPDF) {
-        showAlert(
-          'Não foi possível carregar o jsPDF.\n\n' +
-          '⚠️ Se você colocou "integrity" no script do jsPDF no HTML e ele está bloqueando, REMOVA o integrity.\n' +
-          'Depois recarregue a página.'
-        );
-        btnGerarPdf.disabled = false;
-        btnGerarPdf.textContent = oldText;
-        return;
-      }
-
-      const doc = new JsPDF({ unit: 'mm', format: 'a4' });
+      const doc = new jsPDF();
 
       const hoje = new Date();
       const dataStr = hoje.toLocaleString('pt-BR');
 
-      // tenta inserir logo (se estiver na mesma pasta do index.html)
-      // Nome que você me mandou:
-      const logoData = await loadImageAsDataURL('Marca_UEG_horizontal_extenso_cromia(1).png');
-
-      let y = 12;
-
-      if (logoData) {
-        try {
-          // largura 120mm, mantém proporção aproximada
-          doc.addImage(logoData, 'PNG', 10, y, 120, 0);
-          y += 22;
-        } catch (e) {
-          console.warn('Falha ao inserir logo no PDF:', e);
-        }
-      }
-
       doc.setFontSize(14);
-      doc.text('Universidade Estadual de Goiás - UEG', 10, y); y += 7;
-
+      doc.text('Universidade Estadual de Goiás - UEG', 10, 15);
       doc.setFontSize(12);
-      doc.text('Gerência de Projeto de Software', 10, y); y += 7;
-
-      doc.setFontSize(12);
-      doc.text('Relatório de Dimensionamento de Bombeamento Solar', 10, y); y += 7;
-
+      doc.text('Gerência de Projeto de Software', 10, 22);
+      doc.text('Relatório de Dimensionamento de Bombeamento Solar', 10, 29);
       doc.setFontSize(10);
-      doc.text(`Data/Hora: ${dataStr}`, 10, y); y += 10;
+      doc.text(`Data/Hora: ${dataStr}`, 10, 36);
 
+      let y = 44;
       doc.setFontSize(11);
       doc.text('1. Entradas do Sistema', 10, y); y += 6;
 
       doc.setFontSize(9);
-      const linhas1 = [
-        `Demanda total: ${arred(lastResults.totalDia, 2)} L/dia (${arred(lastResults.totalDia / 1000, 3)} m³/dia)`,
-        `Profundidade do poço: ${arred(parseNumber(pocoProf.value), 2)} m`,
-        `Altura do reservatório: ${arred(parseNumber(reservAlt.value), 2)} m`,
-        `Distância da tubulação: ${arred(lastResults.dist, 2)} m (${arred(lastResults.dist / 1000, 3)} km)`,
-        `Horas de bombeamento: ${arred(lastResults.horas, 2)} h/dia`,
-        `Margem vazão: ${arred(parseNumber(margemVazaoEl.value), 2)}`,
-        `Margem AMT: ${arred(parseNumber(margemAmtEl.value), 2)}`
-      ];
+      doc.text(`Demanda total: ${arred(lastResults.totalDia, 2)} L/dia (${arred(lastResults.totalDia / 1000, 3)} m³/dia)`, 10, y); y += 5;
+      doc.text(`Profundidade do poço: ${arred(parseNumber(pocoProf.value), 2)} m`, 10, y); y += 5;
+      doc.text(`Altura do reservatório: ${arred(parseNumber(reservAlt.value), 2)} m`, 10, y); y += 5;
+      doc.text(`Distância da tubulação: ${arred(lastResults.dist, 2)} m (${arred(lastResults.dist / 1000, 3)} km)`, 10, y); y += 5;
+      doc.text(`Horas de bombeamento: ${arred(lastResults.horas, 2)} h/dia`, 10, y); y += 5;
+      doc.text(`Margem vazão: ${arred(parseNumber(margemVazaoEl.value), 2)}`, 10, y); y += 5;
+      doc.text(`Margem AMT: ${arred(parseNumber(margemAmtEl.value), 2)}`, 10, y); y += 7;
 
-      linhas1.forEach((t) => {
-        doc.text(t, 10, y);
-        y += 5;
-      });
-
-      y += 4;
       doc.setFontSize(11);
       doc.text('2. Resultados de Cálculo', 10, y); y += 6;
-
       doc.setFontSize(9);
-      const linhas2 = [
-        `Perdas de carga (10%): ${arred(lastResults.perdas, 2)} m`,
-        `AMT total: ${arred(lastResults.amt, 2)} m`,
-        `Vazão necessária: ${arred(lastResults.vazaoLh, 2)} L/h (${arred(lastResults.vazaoLmin, 2)} L/min)`,
-        `Vazão em m³: ${arred(lastResults.vazaoM3h, 3)} m³/h (${arred(lastResults.vazaoM3dia, 3)} m³/dia)`,
-        `Meta com margens: ${arred(lastResults.metaFlow, 2)} L/h @ ${arred(lastResults.metaAmt, 2)} m`
-      ];
+      doc.text(`Perdas de carga (10%): ${arred(lastResults.perdas, 2)} m`, 10, y); y += 5;
+      doc.text(`AMT total: ${arred(lastResults.amt, 2)} m`, 10, y); y += 5;
+      doc.text(`Vazão necessária: ${arred(lastResults.vazaoLh, 2)} L/h (${arred(lastResults.vazaoLmin, 2)} L/min)`, 10, y); y += 5;
+      doc.text(`Vazão em m³: ${arred(lastResults.vazaoM3h, 3)} m³/h (${arred(lastResults.vazaoM3dia, 3)} m³/dia)`, 10, y); y += 5;
+      doc.text(`Meta com margens: ${arred(lastResults.metaFlow, 2)} L/h @ ${arred(lastResults.metaAmt, 2)} m`, 10, y); y += 7;
 
-      linhas2.forEach((t) => {
-        doc.text(t, 10, y);
-        y += 5;
-      });
-
-      y += 4;
       doc.setFontSize(11);
       doc.text('3. Recomendação de Bomba', 10, y); y += 6;
-
       doc.setFontSize(9);
+
       if (lastResults.melhor) {
-        const linha = `Recomendada: ${lastResults.melhor.nome} (${lastResults.melhor.tipo}, ${lastResults.melhor.tensao}) - Potência: ${lastResults.melhor.potencia ?? '-'} W`;
-        const split = doc.splitTextToSize(linha, 190);
-        doc.text(split, 10, y);
-        y += 5 * split.length;
+        doc.text(
+          `Recomendada: ${lastResults.melhor.nome} (${lastResults.melhor.tipo}, ${lastResults.melhor.tensao}) - Potência: ${lastResults.melhor.potencia ?? '-'} W`,
+          10, y
+        );
+        y += 6;
       } else {
         doc.text('Nenhuma bomba atende às metas atuais.', 10, y); y += 6;
       }
 
-      y += 2;
       doc.text('Top 5 bombas avaliadas:', 10, y); y += 5;
-
       lastResults.top5.forEach((b, idx) => {
-        if (y > 285) { doc.addPage(); y = 20; }
+        if (y > 280) { doc.addPage(); y = 20; }
         const status = b.atende ? 'Atende meta' : 'Não atende';
         const linha = `${idx + 1}. ${b.nome} (${b.tipo}, ${b.tensao}) - Qmax:${b.maxFlow} L/h, Hmax:${b.maxHead} m - ${status}`;
-        const split = doc.splitTextToSize(linha, 190);
-        doc.text(split, 10, y);
-        y += 5 * split.length;
+        doc.text(linha, 10, y);
+        y += 5;
       });
 
       doc.save('relatorio_bombeamento_solar.pdf');
-
-      // volta UX
-      btnGerarPdf.disabled = false;
-      btnGerarPdf.textContent = oldText;
     } catch (e) {
       console.error(e);
-      showAlert('Ocorreu um erro ao gerar o PDF. Veja o console para detalhes.');
-      btnGerarPdf.disabled = false;
-      btnGerarPdf.textContent = 'Gerar Relatório (PDF)';
+      alert('Erro ao gerar o PDF. Veja o console para detalhes.');
     }
   }
 
   function copiarResumoClipboard() {
     const texto = resumoTextoEl.textContent;
     if (!texto.trim()) {
-      showAlert('Não há resumo para copiar.');
+      alert('Não há resumo para copiar.');
       return;
     }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(texto).then(() => {
         alert('Resumo copiado para a área de transferência.');
       }).catch(() => {
-        showAlert('Não foi possível copiar automaticamente. Copie manualmente.');
+        alert('Não foi possível copiar automaticamente. Copie manualmente.');
       });
     } else {
-      showAlert('Navegador sem suporte a clipboard API. Copie manualmente.');
+      alert('Navegador sem suporte a clipboard API. Copie manualmente.');
     }
   }
 
@@ -828,9 +698,10 @@ document.addEventListener('DOMContentLoaded', () => {
   btnSalvarProjeto.addEventListener('click', salvarProjeto);
   btnCarregarProjeto.addEventListener('click', carregarProjeto);
 
-  // PDF (async safe)
-  btnGerarPdf.addEventListener('click', () => { gerarPdf(); });
+  // ✅ novo evento do import de projeto
+  if (btnImportProjeto) btnImportProjeto.addEventListener('click', importarProjetoArquivo);
 
+  btnGerarPdf.addEventListener('click', gerarPdf);
   btnCopiarResumo.addEventListener('click', copiarResumoClipboard);
 
   btnResetMapa.addEventListener('click', () => {
