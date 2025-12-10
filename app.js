@@ -23,6 +23,7 @@ let lastResults = null;
 
 // ====================== HELPERS ======================
 function parseNumber(input, fallback = 0) {
+  if (typeof input === 'string') input = input.replace(',', '.');
   const n = Number(input);
   return Number.isFinite(n) ? n : fallback;
 }
@@ -40,7 +41,7 @@ function normalizeBomba(raw = {}) {
     raw.tipo ?? raw.type ?? raw.category ?? raw.kind ?? '';
 
   const tensao =
-    raw.tensao ?? raw.voltage ?? raw.v ?? raw.tensão ?? '';
+    raw.tensao ?? raw.voltage ?? raw.v ?? raw["tensão"] ?? raw.tensão ?? '';
 
   const potencia =
     raw.potencia ?? raw.potenciaW ?? raw.powerW ?? raw.power ?? raw.watt ?? raw.watts ?? null;
@@ -133,10 +134,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnGerarPdf = document.getElementById('btnGerarPdf');
   const btnCopiarResumo = document.getElementById('btnCopiarResumo');
 
-  // ✅ NOVO: importar projeto por arquivo
-  const fileProjetoEl = document.getElementById('fileProjeto');
-  const btnImportProjeto = document.getElementById('btnImportProjeto');
-
   // Mapa
   const distanciaMapaInfoEl = document.getElementById('distanciaMapaInfo');
   const btnResetMapa = document.getElementById('btnResetMapa');
@@ -149,6 +146,10 @@ document.addEventListener('DOMContentLoaded', () => {
   let map, markers = [];
 
   function initMap() {
+    if (typeof L === 'undefined') {
+      console.error('Leaflet não carregou (L undefined). Verifique o script do Leaflet.');
+      return;
+    }
     map = L.map('map').setView([-15.94, -48.26], 5);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -173,6 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function resetMapa() {
+    if (!map) return;
     markers.forEach(m => map.removeLayer(m));
     markers = [];
     distanciaMapaInfoEl.textContent = '0';
@@ -180,11 +182,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---------- CÁLCULOS PRINCIPAIS ----------
   function calcularDemandaTotal() {
-    const qtdPessoas = parseNumber(pessoasQtd.value);
-    const qtdBovinos = parseNumber(bovinosQtd.value);
-    const qtdSuinos = parseNumber(suinosQtd.value);
-    const qtdHortas = parseNumber(hortasQtd.value);
-    const qtdPastagem = parseNumber(pastagemQtd.value);
+    const qtdPessoas = Math.max(0, parseNumber(pessoasQtd.value));
+    const qtdBovinos = Math.max(0, parseNumber(bovinosQtd.value));
+    const qtdSuinos = Math.max(0, parseNumber(suinosQtd.value));
+    const qtdHortas = Math.max(0, parseNumber(hortasQtd.value));
+    const qtdPastagem = Math.max(0, parseNumber(pastagemQtd.value));
 
     const total =
       qtdPessoas * consumoPorUnidade.pessoas +
@@ -332,7 +334,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const b = normalizeBomba(b0);
       const atendeTipo = !filtroTipo || b.tipo === filtroTipo;
       const atendeTensao = !filtroTensao || (b.tensao && String(b.tensao).toLowerCase().includes(filtroTensao));
-
       const atendeCapacidade = (b.maxFlow >= metaFlow) && (b.maxHead >= metaAmt);
 
       let score = Infinity;
@@ -399,7 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
     avisosEl.innerHTML = `<strong>Avisos:</strong><ul>${ul}</ul>`;
   }
 
-  // ---------- RESUMO / PDF / LOCALSTORAGE ----------
+  // ---------- RESUMO ----------
   function montarResumoTexto(res) {
     if (!res) {
       resumoTextoEl.textContent = 'Preencha os dados para gerar o resumo.';
@@ -443,36 +444,42 @@ document.addEventListener('DOMContentLoaded', () => {
     resumoTextoEl.textContent = texto;
   }
 
+  // ---------- LOCALSTORAGE (Salvar/Carregar) ----------
   function salvarProjeto() {
-    const state = {
-      demanda: {
-        pessoas: parseNumber(pessoasQtd.value),
-        bovinos: parseNumber(bovinosQtd.value),
-        suinos: parseNumber(suinosQtd.value),
-        hortas: parseNumber(hortasQtd.value),
-        pastagem: parseNumber(pastagemQtd.value)
-      },
-      hidraulica: {
-        poco: parseNumber(pocoProf.value),
-        reservatorio: parseNumber(reservAlt.value),
-        distancia: parseNumber(distTubo.value)
-      },
-      horas: parseNumber(horasBomb.value),
-      eficiencia: parseNumber(eficienciaEl.value),
-      habilitarPotencia: habilitarPotenciaEl.checked,
-      margens: {
-        vazao: parseNumber(margemVazaoEl.value),
-        amt: parseNumber(margemAmtEl.value)
-      },
-      filtros: {
-        tipo: filtroTipoEl.value,
-        tensao: filtroTensaoEl.value
-      },
-      catalogo: catalogoBombas
-    };
+    try {
+      const state = {
+        demanda: {
+          pessoas: parseNumber(pessoasQtd.value),
+          bovinos: parseNumber(bovinosQtd.value),
+          suinos: parseNumber(suinosQtd.value),
+          hortas: parseNumber(hortasQtd.value),
+          pastagem: parseNumber(pastagemQtd.value)
+        },
+        hidraulica: {
+          poco: parseNumber(pocoProf.value),
+          reservatorio: parseNumber(reservAlt.value),
+          distancia: parseNumber(distTubo.value)
+        },
+        horas: parseNumber(horasBomb.value),
+        eficiencia: parseNumber(eficienciaEl.value),
+        habilitarPotencia: habilitarPotenciaEl.checked,
+        margens: {
+          vazao: parseNumber(margemVazaoEl.value),
+          amt: parseNumber(margemAmtEl.value)
+        },
+        filtros: {
+          tipo: filtroTipoEl.value,
+          tensao: filtroTensaoEl.value
+        },
+        catalogo: catalogoBombas
+      };
 
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
-    alert('Projeto salvo no navegador (localStorage).');
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
+      alert('Projeto salvo no navegador (localStorage).');
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao salvar o projeto. Veja o console.');
+    }
   }
 
   function carregarProjeto() {
@@ -512,56 +519,13 @@ document.addEventListener('DOMContentLoaded', () => {
       alert('Projeto carregado com sucesso.');
     } catch (e) {
       console.error(e);
-      alert('Erro ao carregar o projeto salvo.');
+      alert('Erro ao carregar o projeto salvo. Veja o console.');
     }
   }
 
-  // ✅ NOVO: importar projeto por arquivo (.json)
-  function importarProjetoArquivo() {
-    const file = fileProjetoEl?.files?.[0];
-    if (!file) {
-      alert('Selecione um arquivo .json do projeto primeiro.');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const texto = String(ev.target.result || '').trim();
-        if (!texto) {
-          alert('Arquivo vazio. Selecione um .json válido.');
-          return;
-        }
-
-        let state = JSON.parse(texto);
-
-        // Se alguém salvou como "string JSON" dentro do JSON (raro), tenta normalizar
-        if (typeof state === 'string') state = JSON.parse(state);
-
-        // Validação mínima (robusta)
-        if (!state || typeof state !== 'object') {
-          alert('Arquivo não parece ser um projeto válido.');
-          return;
-        }
-
-        // Salva exatamente na mesma chave do sistema
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
-
-        // Usa a função existente para preencher tudo
-        carregarProjeto();
-
-        alert('Projeto importado e carregado com sucesso!');
-      } catch (e) {
-        console.error(e);
-        alert('Não foi possível importar: JSON inválido ou formato inesperado.');
-      }
-    };
-
-    reader.onerror = () => {
-      alert('Erro ao ler o arquivo. Tente novamente.');
-    };
-
-    reader.readAsText(file, 'utf-8');
+  // ---------- jsPDF (tratativa) ----------
+  function getJsPdfCtor() {
+    return window.jspdf && window.jspdf.jsPDF ? window.jspdf.jsPDF : null;
   }
 
   function gerarPdf() {
@@ -570,15 +534,15 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // ✅ Tratativa: jsPDF não carregou (evita “clicar e não acontecer nada”)
-    const jsPDF = window.jspdf?.jsPDF;
-    if (!jsPDF) {
-      alert('A biblioteca jsPDF não carregou. Verifique sua conexão e o script do jsPDF no index.html.');
+    const JsPDF = getJsPdfCtor();
+    if (!JsPDF) {
+      alert('A biblioteca jsPDF não carregou. Verifique sua internet/CDN e recarregue a página (F5).');
+      console.error('jsPDF não encontrado. window.jspdf:', window.jspdf);
       return;
     }
 
     try {
-      const doc = new jsPDF();
+      const doc = new JsPDF();
 
       const hoje = new Date();
       const dataStr = hoje.toLocaleString('pt-BR');
@@ -639,7 +603,7 @@ document.addEventListener('DOMContentLoaded', () => {
       doc.save('relatorio_bombeamento_solar.pdf');
     } catch (e) {
       console.error(e);
-      alert('Erro ao gerar o PDF. Veja o console para detalhes.');
+      alert('Erro ao gerar o PDF. Veja o console.');
     }
   }
 
@@ -697,10 +661,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   btnSalvarProjeto.addEventListener('click', salvarProjeto);
   btnCarregarProjeto.addEventListener('click', carregarProjeto);
-
-  // ✅ novo evento do import de projeto
-  if (btnImportProjeto) btnImportProjeto.addEventListener('click', importarProjetoArquivo);
-
   btnGerarPdf.addEventListener('click', gerarPdf);
   btnCopiarResumo.addEventListener('click', copiarResumoClipboard);
 
