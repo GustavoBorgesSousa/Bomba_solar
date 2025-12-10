@@ -9,48 +9,13 @@ const consumoPorUnidade = {
 
 const LOCAL_STORAGE_KEY = 'bombaSolarProjeto';
 
-// Catálogo exemplo
+// Catálogo exemplo (formato canônico)
 let catalogoBombas = [
-  {
-    nome: "Solar DC 200W",
-    tipo: "Solar DC",
-    tensao: "24V",
-    potencia: 200,
-    maxFlow: 1000,
-    maxHead: 30
-  },
-  {
-    nome: "Solar DC 300W",
-    tipo: "Solar DC",
-    tensao: "24V",
-    potencia: 300,
-    maxFlow: 1500,
-    maxHead: 35
-  },
-  {
-    nome: "Solar DC 500W",
-    tipo: "Solar DC",
-    tensao: "48V",
-    potencia: 500,
-    maxFlow: 2500,
-    maxHead: 45
-  },
-  {
-    nome: "AC 1/2CV",
-    tipo: "AC",
-    tensao: "220V",
-    potencia: 370,
-    maxFlow: 3000,
-    maxHead: 28
-  },
-  {
-    nome: "AC 1CV",
-    tipo: "AC",
-    tensao: "220V",
-    potencia: 750,
-    maxFlow: 4500,
-    maxHead: 40
-  }
+  { nome: "Solar DC 200W", tipo: "Solar DC", tensao: "24V", potencia: 200, maxFlow: 1000, maxHead: 30 },
+  { nome: "Solar DC 300W", tipo: "Solar DC", tensao: "24V", potencia: 300, maxFlow: 1500, maxHead: 35 },
+  { nome: "Solar DC 500W", tipo: "Solar DC", tensao: "48V", potencia: 500, maxFlow: 2500, maxHead: 45 },
+  { nome: "AC 1/2CV",      tipo: "AC",      tensao: "220V", potencia: 370, maxFlow: 3000, maxHead: 28 },
+  { nome: "AC 1CV",        tipo: "AC",      tensao: "220V", potencia: 750, maxFlow: 4500, maxHead: 40 }
 ];
 
 // Guarda últimos resultados para PDF / resumo
@@ -64,6 +29,53 @@ function parseNumber(input, fallback = 0) {
 
 function arred(n, casas = 2) {
   return Number.isFinite(n) ? n.toFixed(casas) : '0';
+}
+
+// --------- NORMALIZAÇÃO DO CATÁLOGO (fallback de chaves) ---------
+function normalizeBomba(raw = {}) {
+  const nome =
+    raw.nome ?? raw.name ?? raw.model ?? raw.title ?? raw.bomba ?? raw.label ?? '';
+
+  const tipo =
+    raw.tipo ?? raw.type ?? raw.category ?? raw.kind ?? '';
+
+  const tensao =
+    raw.tensao ?? raw.voltage ?? raw.v ?? raw.tensão ?? '';
+
+  const potencia =
+    raw.potencia ?? raw.potenciaW ?? raw.powerW ?? raw.power ?? raw.watt ?? raw.watts ?? null;
+
+  // Suporte a variações de nome para Q/H máximos
+  const maxFlow =
+    raw.maxFlow ?? raw.qmax ?? raw.Qmax ?? raw.max_flow ?? raw.max_flow_lh ?? raw.flowMax ?? raw.maxVazao ?? raw.maxVazaoLh ?? null;
+
+  const maxHead =
+    raw.maxHead ?? raw.hmax ?? raw.Hmax ?? raw.max_head ?? raw.headMax ?? raw.maxAltura ?? raw.maxAlturaM ?? null;
+
+  const price =
+    raw.price ?? raw.preco ?? raw.valor ?? null;
+
+  // “curvePoints” opcional (se vocês usarem)
+  const curvePoints = raw.curvePoints ?? raw.curva ?? raw.pontosCurva ?? null;
+
+  return {
+    nome: String(nome || '').trim() || '-',
+    tipo: String(tipo || '').trim() || '-',
+    tensao: String(tensao || '').trim() || '-',
+    potencia: potencia === null ? null : parseNumber(potencia, null),
+    maxFlow: parseNumber(maxFlow, 0),
+    maxHead: parseNumber(maxHead, 0),
+    price: price === null ? null : parseNumber(price, null),
+    curvePoints: Array.isArray(curvePoints) ? curvePoints : null
+  };
+}
+
+function normalizeCatalogo(arr) {
+  return arr
+    .filter(Boolean)
+    .map(normalizeBomba)
+    // mantém itens minimamente úteis (com capacidade numérica)
+    .filter(b => Number.isFinite(b.maxFlow) && Number.isFinite(b.maxHead));
 }
 
 // ====================== DOM READY ======================
@@ -128,14 +140,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const distanciaMapaInfoEl = document.getElementById('distanciaMapaInfo');
   const btnResetMapa = document.getElementById('btnResetMapa');
 
-  // Preenche textarea com catálogo padrão
+  // Normaliza catálogo inicial e preenche textarea
+  catalogoBombas = normalizeCatalogo(catalogoBombas);
   catalogoJsonEl.value = JSON.stringify(catalogoBombas, null, 2);
 
   // ---------- MAPA ----------
   let map, markers = [];
 
   function initMap() {
-    map = L.map('map').setView([-15.94, -48.26], 5); // centro aproximado Brasil
+    map = L.map('map').setView([-15.94, -48.26], 5);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19
@@ -151,7 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
     markers.push(marker);
 
     if (markers.length === 2) {
-      const d = markers[0].getLatLng().distanceTo(markers[1].getLatLng()); // em metros
+      const d = markers[0].getLatLng().distanceTo(markers[1].getLatLng()); // metros
       distanciaMapaInfoEl.textContent = arred(d, 1);
       distTubo.value = Math.round(d);
       recalcAll();
@@ -194,7 +207,7 @@ document.addEventListener('DOMContentLoaded', () => {
     reservAlt.value = hElev;
     distTubo.value = dist;
 
-    const perdas = 0.10 * dist; // modelo simplificado
+    const perdas = 0.10 * dist;
     const amt = hSuc + hElev + perdas;
 
     distKmEl.textContent = arred(dist / 1000, 3);
@@ -253,7 +266,8 @@ document.addEventListener('DOMContentLoaded', () => {
         alert('O JSON do catálogo deve ser um array de bombas.');
         return;
       }
-      catalogoBombas = data;
+      catalogoBombas = normalizeCatalogo(data);
+      catalogoJsonEl.value = JSON.stringify(catalogoBombas, null, 2);
       alert('Catálogo aplicado com sucesso!');
       recalcAll();
     } catch (e) {
@@ -276,7 +290,7 @@ document.addEventListener('DOMContentLoaded', () => {
           alert('O JSON do catálogo deve ser um array de bombas.');
           return;
         }
-        catalogoBombas = data;
+        catalogoBombas = normalizeCatalogo(data);
         catalogoJsonEl.value = JSON.stringify(catalogoBombas, null, 2);
         alert('Catálogo importado com sucesso!');
         recalcAll();
@@ -313,19 +327,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const filtroTipo = filtroTipoEl.value.trim();
     const filtroTensao = filtroTensaoEl.value.trim().toLowerCase();
 
-    const bombasComScore = catalogoBombas.map((b) => {
+    const bombasComScore = catalogoBombas.map((b0) => {
+      const b = normalizeBomba(b0); // garante canônico mesmo se vier “sujo”
       const atendeTipo = !filtroTipo || b.tipo === filtroTipo;
-      const atendeTensao = !filtroTensao ||
-        (b.tensao && String(b.tensao).toLowerCase().includes(filtroTensao));
+      const atendeTensao = !filtroTensao || (b.tensao && String(b.tensao).toLowerCase().includes(filtroTensao));
 
-      const atendeCapacidade =
-        b.maxFlow >= metaFlow &&
-        b.maxHead >= metaAmt;
+      const atendeCapacidade = (b.maxFlow >= metaFlow) && (b.maxHead >= metaAmt);
 
       let score = Infinity;
       if (atendeCapacidade && atendeTipo && atendeTensao) {
-        const folgaFlow = (b.maxFlow - metaFlow) / metaFlow;
-        const folgaHead = (b.maxHead - metaAmt) / metaAmt;
+        const folgaFlow = metaFlow > 0 ? (b.maxFlow - metaFlow) / metaFlow : 0;
+        const folgaHead = metaAmt > 0 ? (b.maxHead - metaAmt) / metaAmt : 0;
         const pesoPot = b.potencia ? b.potencia / 1000 : 0;
         score = Math.max(folgaFlow, 0) + Math.max(folgaHead, 0) + pesoPot;
       }
@@ -343,9 +355,8 @@ document.addEventListener('DOMContentLoaded', () => {
     tabelaBombasEl.innerHTML = '';
     top5.forEach((b, idx) => {
       const tr = document.createElement('tr');
-      if (b === melhor) {
-        tr.style.backgroundColor = '#e6ffe6';
-      }
+      if (b === melhor) tr.style.backgroundColor = '#e6ffe6';
+
       const status = b.atende ? 'Atende meta' : 'Não atende';
       const statusClass = b.atende ? 'status-ok' : 'status-fail';
 
@@ -396,19 +407,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const {
-      totalDia,
-      amt,
-      perdas,
-      dist,
-      vazaoLh,
-      vazaoLmin,
-      vazaoM3h,
-      vazaoM3dia,
-      horas,
-      metaFlow,
-      metaAmt,
-      melhor,
-      top3
+      totalDia, amt, perdas, dist,
+      vazaoLh, vazaoLmin, vazaoM3h, vazaoM3dia, horas,
+      metaFlow, metaAmt, melhor, top3
     } = res;
 
     let texto = '';
@@ -427,7 +428,7 @@ document.addEventListener('DOMContentLoaded', () => {
     texto += `Meta com margens: ${arred(metaFlow, 2)} L/h @ ${arred(metaAmt, 2)} m\n`;
     texto += '\nBomba recomendada:\n';
     if (melhor) {
-      texto += `- ${melhor.nome} (${melhor.tipo}, ${melhor.tensao}) - Potência: ${melhor.potencia} W\n`;
+      texto += `- ${melhor.nome} (${melhor.tipo}, ${melhor.tensao}) - Potência: ${melhor.potencia ?? '-'} W\n`;
     } else {
       texto += '- Nenhuma bomba atende às metas atuais.\n';
     }
@@ -483,32 +484,27 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const state = JSON.parse(raw);
 
-      // Demanda
       pessoasQtd.value = state.demanda?.pessoas ?? 0;
       bovinosQtd.value = state.demanda?.bovinos ?? 0;
       suinosQtd.value = state.demanda?.suinos ?? 0;
       hortasQtd.value = state.demanda?.hortas ?? 0;
       pastagemQtd.value = state.demanda?.pastagem ?? 0;
 
-      // Hidráulica
       pocoProf.value = state.hidraulica?.poco ?? 0;
       reservAlt.value = state.hidraulica?.reservatorio ?? 0;
       distTubo.value = state.hidraulica?.distancia ?? 0;
 
-      // Vazão / potência
       horasBomb.value = state.horas ?? 5.5;
       eficienciaEl.value = state.eficiencia ?? 0.6;
       habilitarPotenciaEl.checked = !!state.habilitarPotencia;
 
-      // Margens / filtros
       margemVazaoEl.value = state.margens?.vazao ?? 1.2;
       margemAmtEl.value = state.margens?.amt ?? 1.1;
       filtroTipoEl.value = state.filtros?.tipo ?? '';
       filtroTensaoEl.value = state.filtros?.tensao ?? '';
 
-      // Catálogo
       if (Array.isArray(state.catalogo)) {
-        catalogoBombas = state.catalogo;
+        catalogoBombas = normalizeCatalogo(state.catalogo);
         catalogoJsonEl.value = JSON.stringify(catalogoBombas, null, 2);
       }
 
@@ -532,7 +528,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const hoje = new Date();
     const dataStr = hoje.toLocaleString('pt-BR');
 
-    // Cabeçalho simples
     doc.setFontSize(14);
     doc.text('Universidade Estadual de Goiás - UEG', 10, 15);
     doc.setFontSize(12);
@@ -569,7 +564,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (lastResults.melhor) {
       doc.text(
-        `Recomendada: ${lastResults.melhor.nome} (${lastResults.melhor.tipo}, ${lastResults.melhor.tensao}) - Potência: ${lastResults.melhor.potencia} W`,
+        `Recomendada: ${lastResults.melhor.nome} (${lastResults.melhor.tipo}, ${lastResults.melhor.tensao}) - Potência: ${lastResults.melhor.potencia ?? '-'} W`,
         10, y
       );
       y += 6;
@@ -579,10 +574,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     doc.text('Top 5 bombas avaliadas:', 10, y); y += 5;
     lastResults.top5.forEach((b, idx) => {
-      if (y > 280) { // nova página se estourar
-        doc.addPage();
-        y = 20;
-      }
+      if (y > 280) { doc.addPage(); y = 20; }
       const status = b.atende ? 'Atende meta' : 'Não atende';
       const linha = `${idx + 1}. ${b.nome} (${b.tipo}, ${b.tensao}) - Qmax:${b.maxFlow} L/h, Hmax:${b.maxHead} m - ${status}`;
       doc.text(linha, 10, y);
@@ -619,19 +611,9 @@ document.addEventListener('DOMContentLoaded', () => {
     atualizarAvisos(amt, avisos);
 
     lastResults = {
-      totalDia,
-      amt,
-      perdas,
-      dist,
-      vazaoLh,
-      vazaoLmin,
-      vazaoM3h,
-      vazaoM3dia,
-      horas,
-      metaFlow,
-      metaAmt,
-      melhor,
-      top5,
+      totalDia, amt, perdas, dist,
+      vazaoLh, vazaoLmin, vazaoM3h, vazaoM3dia, horas,
+      metaFlow, metaAmt, melhor, top5,
       top3: top5.slice(0, 3)
     };
 
