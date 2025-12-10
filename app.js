@@ -1,10 +1,16 @@
 // ====================== CONSTANTES BÁSICAS ======================
+// Consumos médios diários:
+// - pessoas, bovinos, suínos: L/dia por unidade
+// - horta: L/dia por m²
+// - pastagem: L/dia por hectare (ha)
 const consumoPorUnidade = {
-  pessoas: 84,
-  bovinos: 45,
-  suinos: 12.5,
-  hortas: 7,
-  pastagem: 50000
+  pessoas: 84,          // L/dia por pessoa
+  bovinos: 45,          // L/dia por bovino
+  suinos: 12.5,         // L/dia por suíno
+
+  // >>> REFINADO POR ÁREA <<<
+  horta_m2: 7,          // L/dia por m² de horta
+  pastagem_ha: 50000    // L/dia por hectare de pastagem (50.000 L = 50 m³/ha/dia)
 };
 
 const LOCAL_STORAGE_KEY = 'bombaSolarProjeto';
@@ -23,8 +29,17 @@ let lastResults = null;
 
 // ====================== HELPERS ======================
 function parseNumber(input, fallback = 0) {
-  if (typeof input === 'string') input = input.replace(',', '.');
-  const n = Number(input);
+  if (input === null || input === undefined) return fallback;
+
+  let s = String(input).trim();
+  if (!s) return fallback;
+
+  // Se tiver vírgula, assume pt-BR: "1.234,56" -> "1234.56"
+  if (s.includes(',')) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  }
+
+  const n = Number(s);
   return Number.isFinite(n) ? n : fallback;
 }
 
@@ -41,7 +56,7 @@ function normalizeBomba(raw = {}) {
     raw.tipo ?? raw.type ?? raw.category ?? raw.kind ?? '';
 
   const tensao =
-    raw.tensao ?? raw.voltage ?? raw.v ?? raw["tensão"] ?? raw.tensão ?? '';
+    raw.tensao ?? raw.voltage ?? raw.v ?? raw.tensão ?? '';
 
   const potencia =
     raw.potencia ?? raw.potenciaW ?? raw.powerW ?? raw.power ?? raw.watt ?? raw.watts ?? null;
@@ -82,8 +97,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const pessoasQtd = document.getElementById('pessoasQtd');
   const bovinosQtd = document.getElementById('bovinosQtd');
   const suinosQtd = document.getElementById('suinosQtd');
-  const hortasQtd = document.getElementById('hortasQtd');
-  const pastagemQtd = document.getElementById('pastagemQtd');
+
+  // >>> NOVOS IDs (área) com fallback pros antigos (se existir) <<<
+  const hortaAreaM2 = document.getElementById('hortaAreaM2') || document.getElementById('hortasQtd');
+  const pastagemAreaHa = document.getElementById('pastagemAreaHa') || document.getElementById('pastagemQtd');
 
   // Saídas demanda
   const totalLitrosDiaEl = document.getElementById('totalLitrosDia');
@@ -146,10 +163,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let map, markers = [];
 
   function initMap() {
-    if (typeof L === 'undefined') {
-      console.error('Leaflet não carregou (L undefined). Verifique o script do Leaflet.');
-      return;
-    }
     map = L.map('map').setView([-15.94, -48.26], 5);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -174,7 +187,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function resetMapa() {
-    if (!map) return;
     markers.forEach(m => map.removeLayer(m));
     markers = [];
     distanciaMapaInfoEl.textContent = '0';
@@ -184,21 +196,27 @@ document.addEventListener('DOMContentLoaded', () => {
   function calcularDemandaTotal() {
     const qtdPessoas = Math.max(0, parseNumber(pessoasQtd.value));
     const qtdBovinos = Math.max(0, parseNumber(bovinosQtd.value));
-    const qtdSuinos = Math.max(0, parseNumber(suinosQtd.value));
-    const qtdHortas = Math.max(0, parseNumber(hortasQtd.value));
-    const qtdPastagem = Math.max(0, parseNumber(pastagemQtd.value));
+    const qtdSuinos  = Math.max(0, parseNumber(suinosQtd.value));
+
+    // >>> Agora por área <<<
+    const areaHortaM2 = Math.max(0, parseNumber(hortaAreaM2?.value));
+    const areaPastHa  = Math.max(0, parseNumber(pastagemAreaHa?.value));
 
     const total =
       qtdPessoas * consumoPorUnidade.pessoas +
       qtdBovinos * consumoPorUnidade.bovinos +
-      qtdSuinos * consumoPorUnidade.suinos +
-      qtdHortas * consumoPorUnidade.hortas +
-      qtdPastagem * consumoPorUnidade.pastagem;
+      qtdSuinos  * consumoPorUnidade.suinos +
+      areaHortaM2 * consumoPorUnidade.horta_m2 +
+      areaPastHa  * consumoPorUnidade.pastagem_ha;
 
     totalLitrosDiaEl.textContent = arred(total, 2);
     totalM3DiaEl.textContent = arred(total / 1000, 3);
 
-    return total;
+    return {
+      totalDia: total,
+      qtdPessoas, qtdBovinos, qtdSuinos,
+      areaHortaM2, areaPastHa
+    };
   }
 
   function calcularAMT() {
@@ -334,6 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const b = normalizeBomba(b0);
       const atendeTipo = !filtroTipo || b.tipo === filtroTipo;
       const atendeTensao = !filtroTensao || (b.tensao && String(b.tensao).toLowerCase().includes(filtroTensao));
+
       const atendeCapacidade = (b.maxFlow >= metaFlow) && (b.maxHead >= metaAmt);
 
       let score = Infinity;
@@ -374,11 +393,9 @@ document.addEventListener('DOMContentLoaded', () => {
       tabelaBombasEl.appendChild(tr);
     });
 
-    if (melhor) {
-      bombaRecomendadaEl.textContent = `${melhor.nome} (${melhor.tipo}, ${melhor.tensao})`;
-    } else {
-      bombaRecomendadaEl.textContent = 'Nenhuma bomba atende às metas atuais.';
-    }
+    bombaRecomendadaEl.textContent = melhor
+      ? `${melhor.nome} (${melhor.tipo}, ${melhor.tensao})`
+      : 'Nenhuma bomba atende às metas atuais.';
 
     return { metaFlow, metaAmt, melhor, top5 };
   }
@@ -400,7 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
     avisosEl.innerHTML = `<strong>Avisos:</strong><ul>${ul}</ul>`;
   }
 
-  // ---------- RESUMO ----------
+  // ---------- RESUMO / PDF / LOCALSTORAGE ----------
   function montarResumoTexto(res) {
     if (!res) {
       resumoTextoEl.textContent = 'Preencha os dados para gerar o resumo.';
@@ -410,12 +427,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const {
       totalDia, amt, perdas, dist,
       vazaoLh, vazaoLmin, vazaoM3h, vazaoM3dia, horas,
-      metaFlow, metaAmt, melhor, top3
+      metaFlow, metaAmt, melhor, top3,
+      qtdPessoas, qtdBovinos, qtdSuinos,
+      areaHortaM2, areaPastHa
     } = res;
 
     let texto = '';
     texto += '=== RESUMO DO PROJETO DE BOMBEAMENTO ===\n\n';
-    texto += `Demanda total: ${arred(totalDia, 2)} L/dia (${arred(totalDia / 1000, 3)} m³/dia)\n`;
+    texto += `Demanda total: ${arred(totalDia, 2)} L/dia (${arred(totalDia / 1000, 3)} m³/dia)\n\n`;
+
+    texto += `Entradas (demanda):\n`;
+    texto += `- Pessoas: ${arred(qtdPessoas, 0)}\n`;
+    texto += `- Bovinos: ${arred(qtdBovinos, 0)}\n`;
+    texto += `- Suínos: ${arred(qtdSuinos, 0)}\n`;
+    texto += `- Horta: ${arred(areaHortaM2, 2)} m² (coef.: ${consumoPorUnidade.horta_m2} L/m²/dia)\n`;
+    texto += `- Pastagem: ${arred(areaPastHa, 2)} ha (coef.: ${consumoPorUnidade.pastagem_ha} L/ha/dia)\n\n`;
+
     texto += `Profundidade do poço: ${arred(parseNumber(pocoProf.value), 2)} m\n`;
     texto += `Altura do reservatório: ${arred(parseNumber(reservAlt.value), 2)} m\n`;
     texto += `Distância da tubulação: ${arred(dist, 2)} m (${arred(dist / 1000, 3)} km)\n`;
@@ -428,11 +455,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     texto += `Meta com margens: ${arred(metaFlow, 2)} L/h @ ${arred(metaAmt, 2)} m\n`;
     texto += '\nBomba recomendada:\n';
-    if (melhor) {
-      texto += `- ${melhor.nome} (${melhor.tipo}, ${melhor.tensao}) - Potência: ${melhor.potencia ?? '-'} W\n`;
-    } else {
-      texto += '- Nenhuma bomba atende às metas atuais.\n';
-    }
+    texto += melhor
+      ? `- ${melhor.nome} (${melhor.tipo}, ${melhor.tensao}) - Potência: ${melhor.potencia ?? '-'} W\n`
+      : '- Nenhuma bomba atende às metas atuais.\n';
 
     if (top3 && top3.length) {
       texto += '\nTop 3 opções consideradas:\n';
@@ -444,42 +469,38 @@ document.addEventListener('DOMContentLoaded', () => {
     resumoTextoEl.textContent = texto;
   }
 
-  // ---------- LOCALSTORAGE (Salvar/Carregar) ----------
   function salvarProjeto() {
-    try {
-      const state = {
-        demanda: {
-          pessoas: parseNumber(pessoasQtd.value),
-          bovinos: parseNumber(bovinosQtd.value),
-          suinos: parseNumber(suinosQtd.value),
-          hortas: parseNumber(hortasQtd.value),
-          pastagem: parseNumber(pastagemQtd.value)
-        },
-        hidraulica: {
-          poco: parseNumber(pocoProf.value),
-          reservatorio: parseNumber(reservAlt.value),
-          distancia: parseNumber(distTubo.value)
-        },
-        horas: parseNumber(horasBomb.value),
-        eficiencia: parseNumber(eficienciaEl.value),
-        habilitarPotencia: habilitarPotenciaEl.checked,
-        margens: {
-          vazao: parseNumber(margemVazaoEl.value),
-          amt: parseNumber(margemAmtEl.value)
-        },
-        filtros: {
-          tipo: filtroTipoEl.value,
-          tensao: filtroTensaoEl.value
-        },
-        catalogo: catalogoBombas
-      };
+    const state = {
+      demanda: {
+        pessoas: parseNumber(pessoasQtd.value),
+        bovinos: parseNumber(bovinosQtd.value),
+        suinos: parseNumber(suinosQtd.value),
 
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
-      alert('Projeto salvo no navegador (localStorage).');
-    } catch (e) {
-      console.error(e);
-      alert('Erro ao salvar o projeto. Veja o console.');
-    }
+        // NOVO (área)
+        hortaAreaM2: parseNumber(hortaAreaM2?.value),
+        pastagemAreaHa: parseNumber(pastagemAreaHa?.value)
+      },
+      hidraulica: {
+        poco: parseNumber(pocoProf.value),
+        reservatorio: parseNumber(reservAlt.value),
+        distancia: parseNumber(distTubo.value)
+      },
+      horas: parseNumber(horasBomb.value),
+      eficiencia: parseNumber(eficienciaEl.value),
+      habilitarPotencia: habilitarPotenciaEl.checked,
+      margens: {
+        vazao: parseNumber(margemVazaoEl.value),
+        amt: parseNumber(margemAmtEl.value)
+      },
+      filtros: {
+        tipo: filtroTipoEl.value,
+        tensao: filtroTensaoEl.value
+      },
+      catalogo: catalogoBombas
+    };
+
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
+    alert('Projeto salvo no navegador (localStorage).');
   }
 
   function carregarProjeto() {
@@ -493,9 +514,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
       pessoasQtd.value = state.demanda?.pessoas ?? 0;
       bovinosQtd.value = state.demanda?.bovinos ?? 0;
-      suinosQtd.value = state.demanda?.suinos ?? 0;
-      hortasQtd.value = state.demanda?.hortas ?? 0;
-      pastagemQtd.value = state.demanda?.pastagem ?? 0;
+      suinosQtd.value  = state.demanda?.suinos ?? 0;
+
+      // NOVO (área) + compatibilidade com saves antigos
+      if (hortaAreaM2) {
+        hortaAreaM2.value = state.demanda?.hortaAreaM2 ?? state.demanda?.hortas ?? 0;
+      }
+      if (pastagemAreaHa) {
+        pastagemAreaHa.value = state.demanda?.pastagemAreaHa ?? state.demanda?.pastagem ?? 0;
+      }
 
       pocoProf.value = state.hidraulica?.poco ?? 0;
       reservAlt.value = state.hidraulica?.reservatorio ?? 0;
@@ -519,13 +546,8 @@ document.addEventListener('DOMContentLoaded', () => {
       alert('Projeto carregado com sucesso.');
     } catch (e) {
       console.error(e);
-      alert('Erro ao carregar o projeto salvo. Veja o console.');
+      alert('Erro ao carregar o projeto salvo.');
     }
-  }
-
-  // ---------- jsPDF (tratativa) ----------
-  function getJsPdfCtor() {
-    return window.jspdf && window.jspdf.jsPDF ? window.jspdf.jsPDF : null;
   }
 
   function gerarPdf() {
@@ -534,77 +556,81 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const JsPDF = getJsPdfCtor();
-    if (!JsPDF) {
-      alert('A biblioteca jsPDF não carregou. Verifique sua internet/CDN e recarregue a página (F5).');
-      console.error('jsPDF não encontrado. window.jspdf:', window.jspdf);
+    // Proteção: se jsPDF não carregou
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+      alert('A biblioteca jsPDF não foi carregada. Verifique o <script> do jsPDF no HTML (integrity/CORS).');
       return;
     }
 
-    try {
-      const doc = new JsPDF();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
 
-      const hoje = new Date();
-      const dataStr = hoje.toLocaleString('pt-BR');
+    const hoje = new Date();
+    const dataStr = hoje.toLocaleString('pt-BR');
 
-      doc.setFontSize(14);
-      doc.text('Universidade Estadual de Goiás - UEG', 10, 15);
-      doc.setFontSize(12);
-      doc.text('Gerência de Projeto de Software', 10, 22);
-      doc.text('Relatório de Dimensionamento de Bombeamento Solar', 10, 29);
-      doc.setFontSize(10);
-      doc.text(`Data/Hora: ${dataStr}`, 10, 36);
+    doc.setFontSize(14);
+    doc.text('Universidade Estadual de Goiás - UEG', 10, 15);
+    doc.setFontSize(12);
+    doc.text('Gerência de Projeto de Software', 10, 22);
+    doc.text('Relatório de Dimensionamento de Bombeamento Solar', 10, 29);
+    doc.setFontSize(10);
+    doc.text(`Data/Hora: ${dataStr}`, 10, 36);
 
-      let y = 44;
-      doc.setFontSize(11);
-      doc.text('1. Entradas do Sistema', 10, y); y += 6;
+    let y = 44;
 
-      doc.setFontSize(9);
-      doc.text(`Demanda total: ${arred(lastResults.totalDia, 2)} L/dia (${arred(lastResults.totalDia / 1000, 3)} m³/dia)`, 10, y); y += 5;
-      doc.text(`Profundidade do poço: ${arred(parseNumber(pocoProf.value), 2)} m`, 10, y); y += 5;
-      doc.text(`Altura do reservatório: ${arred(parseNumber(reservAlt.value), 2)} m`, 10, y); y += 5;
-      doc.text(`Distância da tubulação: ${arred(lastResults.dist, 2)} m (${arred(lastResults.dist / 1000, 3)} km)`, 10, y); y += 5;
-      doc.text(`Horas de bombeamento: ${arred(lastResults.horas, 2)} h/dia`, 10, y); y += 5;
-      doc.text(`Margem vazão: ${arred(parseNumber(margemVazaoEl.value), 2)}`, 10, y); y += 5;
-      doc.text(`Margem AMT: ${arred(parseNumber(margemAmtEl.value), 2)}`, 10, y); y += 7;
+    doc.setFontSize(11);
+    doc.text('1. Entradas do Sistema', 10, y); y += 6;
 
-      doc.setFontSize(11);
-      doc.text('2. Resultados de Cálculo', 10, y); y += 6;
-      doc.setFontSize(9);
-      doc.text(`Perdas de carga (10%): ${arred(lastResults.perdas, 2)} m`, 10, y); y += 5;
-      doc.text(`AMT total: ${arred(lastResults.amt, 2)} m`, 10, y); y += 5;
-      doc.text(`Vazão necessária: ${arred(lastResults.vazaoLh, 2)} L/h (${arred(lastResults.vazaoLmin, 2)} L/min)`, 10, y); y += 5;
-      doc.text(`Vazão em m³: ${arred(lastResults.vazaoM3h, 3)} m³/h (${arred(lastResults.vazaoM3dia, 3)} m³/dia)`, 10, y); y += 5;
-      doc.text(`Meta com margens: ${arred(lastResults.metaFlow, 2)} L/h @ ${arred(lastResults.metaAmt, 2)} m`, 10, y); y += 7;
+    doc.setFontSize(9);
+    doc.text(`Demanda total: ${arred(lastResults.totalDia, 2)} L/dia (${arred(lastResults.totalDia / 1000, 3)} m³/dia)`, 10, y); y += 5;
 
-      doc.setFontSize(11);
-      doc.text('3. Recomendação de Bomba', 10, y); y += 6;
-      doc.setFontSize(9);
+    doc.text(`Pessoas: ${arred(lastResults.qtdPessoas, 0)}`, 10, y); y += 5;
+    doc.text(`Bovinos: ${arred(lastResults.qtdBovinos, 0)}`, 10, y); y += 5;
+    doc.text(`Suínos: ${arred(lastResults.qtdSuinos, 0)}`, 10, y); y += 5;
 
-      if (lastResults.melhor) {
-        doc.text(
-          `Recomendada: ${lastResults.melhor.nome} (${lastResults.melhor.tipo}, ${lastResults.melhor.tensao}) - Potência: ${lastResults.melhor.potencia ?? '-'} W`,
-          10, y
-        );
-        y += 6;
-      } else {
-        doc.text('Nenhuma bomba atende às metas atuais.', 10, y); y += 6;
-      }
+    doc.text(`Horta: ${arred(lastResults.areaHortaM2, 2)} m² (coef.: ${consumoPorUnidade.horta_m2} L/m²/dia)`, 10, y); y += 5;
+    doc.text(`Pastagem: ${arred(lastResults.areaPastHa, 2)} ha (coef.: ${consumoPorUnidade.pastagem_ha} L/ha/dia)`, 10, y); y += 5;
 
-      doc.text('Top 5 bombas avaliadas:', 10, y); y += 5;
-      lastResults.top5.forEach((b, idx) => {
-        if (y > 280) { doc.addPage(); y = 20; }
-        const status = b.atende ? 'Atende meta' : 'Não atende';
-        const linha = `${idx + 1}. ${b.nome} (${b.tipo}, ${b.tensao}) - Qmax:${b.maxFlow} L/h, Hmax:${b.maxHead} m - ${status}`;
-        doc.text(linha, 10, y);
-        y += 5;
-      });
+    doc.text(`Profundidade do poço: ${arred(parseNumber(pocoProf.value), 2)} m`, 10, y); y += 5;
+    doc.text(`Altura do reservatório: ${arred(parseNumber(reservAlt.value), 2)} m`, 10, y); y += 5;
+    doc.text(`Distância da tubulação: ${arred(lastResults.dist, 2)} m (${arred(lastResults.dist / 1000, 3)} km)`, 10, y); y += 5;
+    doc.text(`Horas de bombeamento: ${arred(lastResults.horas, 2)} h/dia`, 10, y); y += 5;
+    doc.text(`Margem vazão: ${arred(parseNumber(margemVazaoEl.value), 2)}`, 10, y); y += 5;
+    doc.text(`Margem AMT: ${arred(parseNumber(margemAmtEl.value), 2)}`, 10, y); y += 7;
 
-      doc.save('relatorio_bombeamento_solar.pdf');
-    } catch (e) {
-      console.error(e);
-      alert('Erro ao gerar o PDF. Veja o console.');
+    doc.setFontSize(11);
+    doc.text('2. Resultados de Cálculo', 10, y); y += 6;
+    doc.setFontSize(9);
+    doc.text(`Perdas de carga (10%): ${arred(lastResults.perdas, 2)} m`, 10, y); y += 5;
+    doc.text(`AMT total: ${arred(lastResults.amt, 2)} m`, 10, y); y += 5;
+    doc.text(`Vazão necessária: ${arred(lastResults.vazaoLh, 2)} L/h (${arred(lastResults.vazaoLmin, 2)} L/min)`, 10, y); y += 5;
+    doc.text(`Vazão em m³: ${arred(lastResults.vazaoM3h, 3)} m³/h (${arred(lastResults.vazaoM3dia, 3)} m³/dia)`, 10, y); y += 5;
+    doc.text(`Meta com margens: ${arred(lastResults.metaFlow, 2)} L/h @ ${arred(lastResults.metaAmt, 2)} m`, 10, y); y += 7;
+
+    doc.setFontSize(11);
+    doc.text('3. Recomendação de Bomba', 10, y); y += 6;
+    doc.setFontSize(9);
+
+    if (lastResults.melhor) {
+      doc.text(
+        `Recomendada: ${lastResults.melhor.nome} (${lastResults.melhor.tipo}, ${lastResults.melhor.tensao}) - Potência: ${lastResults.melhor.potencia ?? '-'} W`,
+        10, y
+      );
+      y += 6;
+    } else {
+      doc.text('Nenhuma bomba atende às metas atuais.', 10, y); y += 6;
     }
+
+    doc.text('Top 5 bombas avaliadas:', 10, y); y += 5;
+    lastResults.top5.forEach((b, idx) => {
+      if (y > 280) { doc.addPage(); y = 20; }
+      const status = b.atende ? 'Atende meta' : 'Não atende';
+      const linha = `${idx + 1}. ${b.nome} (${b.tipo}, ${b.tensao}) - Qmax:${b.maxFlow} L/h, Hmax:${b.maxHead} m - ${status}`;
+      doc.text(linha, 10, y);
+      y += 5;
+    });
+
+    doc.save('relatorio_bombeamento_solar.pdf');
   }
 
   function copiarResumoClipboard() {
@@ -626,15 +652,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---------- RE-CÁLCULO GERAL ----------
   function recalcAll() {
-    const totalDia = calcularDemandaTotal();
+    const demanda = calcularDemandaTotal(); // agora retorna objeto
     const { amt, perdas, dist } = calcularAMT();
-    const { vazaoLh, vazaoLmin, vazaoM3h, vazaoM3dia, horas, avisos } = calcularVazaoEPotencia(totalDia, amt);
+    const { vazaoLh, vazaoLmin, vazaoM3h, vazaoM3dia, horas, avisos } = calcularVazaoEPotencia(demanda.totalDia, amt);
     const { metaFlow, metaAmt, melhor, top5 } = recomendarBombas(vazaoLh, amt);
 
     atualizarAvisos(amt, avisos);
 
     lastResults = {
-      totalDia, amt, perdas, dist,
+      totalDia: demanda.totalDia,
+      qtdPessoas: demanda.qtdPessoas,
+      qtdBovinos: demanda.qtdBovinos,
+      qtdSuinos: demanda.qtdSuinos,
+      areaHortaM2: demanda.areaHortaM2,
+      areaPastHa: demanda.areaPastHa,
+
+      amt, perdas, dist,
       vazaoLh, vazaoLmin, vazaoM3h, vazaoM3dia, horas,
       metaFlow, metaAmt, melhor, top5,
       top3: top5.slice(0, 3)
@@ -645,12 +678,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---------- EVENTOS ----------
   [
-    pessoasQtd, bovinosQtd, suinosQtd, hortasQtd, pastagemQtd,
+    pessoasQtd, bovinosQtd, suinosQtd,
+    hortaAreaM2, pastagemAreaHa,
     pocoProf, reservAlt, distTubo,
     horasBomb, eficienciaEl, habilitarPotenciaEl,
     margemVazaoEl, margemAmtEl,
     filtroTipoEl, filtroTensaoEl
-  ].forEach(el => {
+  ].filter(Boolean).forEach(el => {
     el.addEventListener('input', recalcAll);
     el.addEventListener('change', recalcAll);
   });
